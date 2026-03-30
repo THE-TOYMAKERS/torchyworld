@@ -16,6 +16,7 @@ import "player"
 import "world"
 import "obstacles"
 import "hud"
+import "sound"
 
 -- ============================================================
 -- GAME STATE MACHINE
@@ -39,6 +40,7 @@ local player = nil
 local world = nil
 local obstacleManager = nil
 local hudDisplay = nil
+local soundManager = nil
 
 -- Screen constants
 local SCREEN_W <const> = 400
@@ -58,6 +60,9 @@ local readyTimer = 0
 -- Screen shake
 local shakeAmount = 0
 local shakeDuration = 0
+
+-- Initialize sound manager globally (persists across games)
+soundManager = SoundManager()
 
 -- ============================================================
 -- HELPER: Screen shake
@@ -140,15 +145,12 @@ local function drawTitle()
     local outX = math.cos(skaterRad)
     local outY = math.sin(skaterRad)
 
-    -- Stick body
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(2)
     gfx.drawLine(skaterX, skaterY, skaterX + outX * 10, skaterY + outY * 10)
 
-    -- Match head
     gfx.fillCircleAtPoint(skaterX + outX * 12, skaterY + outY * 12, 3)
 
-    -- Flame
     local flicker = math.sin(titleFlameFrame * 0.4) * 1.5
     gfx.fillCircleAtPoint(skaterX + outX * (16 + flicker), skaterY + outY * (16 + flicker), 5)
     gfx.setColor(gfx.kColorWhite)
@@ -158,15 +160,12 @@ local function drawTitle()
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
     gfx.setFont(subFont)
 
-    -- Controls info
     gfx.drawTextAligned("A=Jump  B=Shoot", CENTER_X, 198, kTextAlignment.center)
 
-    -- Blinking "Press A"
     if frameCount % 40 < 28 then
         gfx.drawTextAligned("Press A to Start!", CENTER_X, 213, kTextAlignment.center)
     end
 
-    -- High score
     if highScore > 0 then
         gfx.drawTextAligned("Best: " .. highScore, CENTER_X, 228, kTextAlignment.center)
     end
@@ -207,6 +206,9 @@ function initGame()
     world = World()
     obstacleManager = ObstacleManager()
     hudDisplay = HUD()
+
+    -- Start background music
+    soundManager:startMusic()
 end
 
 -- ============================================================
@@ -216,17 +218,14 @@ end
 local function updateReady()
     gfx.clear(gfx.kColorWhite)
 
-    -- Draw the game world in background
     world:draw(CENTER_X, CENTER_Y, gameSpeed)
     player:draw()
 
-    -- Draw center hub
     gfx.setColor(gfx.kColorBlack)
     gfx.fillCircleAtPoint(CENTER_X, CENTER_Y, 12)
     gfx.setColor(gfx.kColorWhite)
     gfx.fillCircleAtPoint(CENTER_X, CENTER_Y, 8)
 
-    -- Countdown overlay
     local seconds = math.ceil(readyTimer / 30)
     local countText = tostring(seconds)
     if seconds <= 0 then
@@ -244,14 +243,15 @@ local function updateReady()
     gfx.drawRoundRect(CENTER_X - textW/2 - 20, CENTER_Y - 20, textW + 40, 40, 6)
     gfx.drawTextAligned(countText, CENTER_X, CENTER_Y - 10, kTextAlignment.center)
 
-    -- Controls hint
     local subFont = gfx.getSystemFont()
     gfx.setFont(subFont)
     gfx.drawTextAligned("Crank=Rotate  A=Jump  B=Shoot", CENTER_X, CENTER_Y + 30, kTextAlignment.center)
 
-    -- Let player rotate during countdown
+    -- Let player rotate during countdown + whoosh sound
     local crankChange = playdate.getCrankChange()
     player:updateAngle(crankChange)
+    soundManager:updateWhoosh(crankChange)
+    soundManager:updateMusic(gameSpeed)
 
     readyTimer = readyTimer - 1
     if readyTimer <= -30 then
@@ -275,24 +275,39 @@ local function updatePlaying()
     -- Get crank input
     local crankChange = playdate.getCrankChange()
 
-    -- Update player (handles input, movement, shooting)
+    -- Crank whoosh sound
+    soundManager:updateWhoosh(crankChange)
+
+    -- Detect jump for sound (check before player:update consumes the input)
+    local willJump = playdate.buttonJustPressed(playdate.kButtonA) and not player.isJumping
+    local willShoot = playdate.buttonJustPressed(playdate.kButtonB) and player.ammo > 0 and player.shootCooldown <= 0
+
+    -- Update player
     player:update(crankChange, gameSpeed)
 
-    -- Update world (radial particles, visual effects)
+    -- Play sounds for actions that just happened
+    if willJump then
+        soundManager:playJump()
+    end
+    if willShoot then
+        soundManager:playBlaster()
+    end
+
+    -- Update world
     world:update(gameSpeed)
 
-    -- Update obstacles (platforms, incoming obstacles, warnings)
+    -- Update obstacles
     obstacleManager:update(gameSpeed, distance)
 
-    -- Check projectile-obstacle collisions (Smash Hit style)
+    -- Check projectile-obstacle collisions
     local hits = obstacleManager:checkProjectileCollisions(player.projectiles)
     if hits > 0 then
         score = score + hits * 25
         obstaclesDestroyed = obstaclesDestroyed + hits
-        triggerShake(2, 5) -- small satisfying shake on hit
+        triggerShake(2, 5)
         hudDisplay:showHitCombo(hits, score)
-        -- Breaking obstacles gives back some ammo (like Smash Hit ball mechanic)
         player:addAmmo(hits)
+        soundManager:playHit()
     end
 
     -- Check player-obstacle collisions
@@ -300,11 +315,13 @@ local function updatePlaying()
     if collision then
         if collisionType == "star" then
             score = score + 50
-            -- Stars give ammo (Smash Hit: pickups give more balls)
             player:addAmmo(3)
+            soundManager:playStar()
         else
             -- Hit obstacle - game over!
             triggerShake(6, 15)
+            soundManager:playGameOver()
+            soundManager:stopMusic()
             gameState = STATE_GAMEOVER
             if score > highScore then
                 highScore = score
@@ -318,6 +335,8 @@ local function updatePlaying()
         player.fallTimer = player.fallTimer + 1
         if player.fallTimer > 10 then
             triggerShake(6, 15)
+            soundManager:playGameOver()
+            soundManager:stopMusic()
             gameState = STATE_GAMEOVER
             if score > highScore then
                 highScore = score
@@ -332,22 +351,21 @@ local function updatePlaying()
     distance = distance + gameSpeed
     score = math.max(score, math.floor(distance / 3))
 
+    -- Update music (tempo scales with speed)
+    soundManager:updateMusic(gameSpeed)
+
     -- ---- DRAW EVERYTHING ----
     gfx.clear(gfx.kColorWhite)
     updateShake()
 
-    -- Draw world background (radial particles, tunnel effect)
     world:draw(CENTER_X, CENTER_Y, gameSpeed)
 
-    -- Draw orbital track
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(2)
     gfx.drawCircleAtPoint(CENTER_X, CENTER_Y, player.orbitRadius)
 
-    -- Draw platforms and obstacles
     obstacleManager:draw(CENTER_X, CENTER_Y, player.orbitRadius)
 
-    -- Draw center hub
     gfx.setColor(gfx.kColorBlack)
     gfx.fillCircleAtPoint(CENTER_X, CENTER_Y, 14)
     gfx.setColor(gfx.kColorWhite)
@@ -355,7 +373,6 @@ local function updatePlaying()
     gfx.setColor(gfx.kColorBlack)
     gfx.fillCircleAtPoint(CENTER_X, CENTER_Y, 4)
 
-    -- Draw spokes from center
     for i = 0, 7 do
         local angle = math.rad(i * 45 + frameCount * 2)
         local x1 = CENTER_X + 10 * math.cos(angle)
@@ -366,13 +383,10 @@ local function updatePlaying()
         gfx.drawLine(x1, y1, x2, y2)
     end
 
-    -- Draw player (matchstick + projectiles)
     player:draw()
 
-    -- Draw HUD (score, speed, ammo)
     hudDisplay:draw(score, highScore, gameSpeed, distance, player.ammo, player.maxAmmo)
 
-    -- Reset draw offset after shake
     if shakeDuration <= 0 then
         gfx.setDrawOffset(0, 0)
     end
@@ -418,18 +432,15 @@ local function updateGameOver()
     gfx.setLineWidth(3)
     gfx.drawRoundRect(60, 30, 280, 180, 10)
 
-    -- Title
     local boldFont = gfx.getSystemFont(gfx.font.kVariantBold)
     gfx.setFont(boldFont)
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
     gfx.drawTextAligned("GAME OVER", CENTER_X, 42, kTextAlignment.center)
 
-    -- Divider
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(2)
     gfx.drawLine(80, 64, 320, 64)
 
-    -- Stats
     local font = gfx.getSystemFont()
     gfx.setFont(font)
     gfx.drawTextAligned("Score: " .. score, CENTER_X, 74, kTextAlignment.center)
@@ -440,7 +451,6 @@ local function updateGameOver()
 
     gfx.drawTextAligned("Destroyed: " .. obstaclesDestroyed, CENTER_X, 134, kTextAlignment.center)
 
-    -- New high score
     if score >= highScore and score > 0 then
         if frameCount % 20 < 14 then
             gfx.setFont(boldFont)
@@ -448,7 +458,6 @@ local function updateGameOver()
         end
     end
 
-    -- Restart
     if gameOverTimer > 45 then
         if frameCount % 30 < 22 then
             gfx.setFont(font)
