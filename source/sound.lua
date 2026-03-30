@@ -39,6 +39,7 @@ function SoundManager:init()
     self.whooshSynth:setVolume(0.0)
     self.whooshPlaying = false
     self.whooshTargetVol = 0
+    self.whooshCurrentVol = 0
 
     -- === GAME OVER SYNTH ===
     self.gameOverSynth = snd.synth.new(snd.kWaveSawtooth)
@@ -168,25 +169,20 @@ function SoundManager:updateWhoosh(crankChange)
     if absChange > 1 then
         self.whooshTargetVol = math.min(0.15, absChange / 40)
 
-        if not self.whooshPlaying then
-            self.whooshSynth:playNote(200, 0.0, 0)  -- indefinite, start silent
-            self.whooshPlaying = true
-        end
-
-        -- Set frequency based on crank speed (faster = higher pitch)
-        local freq = 150 + absChange * 8
-        self.whooshSynth:setFrequency(math.min(freq, 600))
+        -- Play a short noise burst at a frequency tied to crank speed
+        -- Using playNote each frame to update frequency (no setFrequency method)
+        local freq = math.min(600, 150 + absChange * 8)
+        self.whooshSynth:playNote(freq, self.whooshTargetVol, 0.05)
+        self.whooshPlaying = true
     else
         self.whooshTargetVol = 0
     end
 
-    -- Smooth volume transition
-    local currentVol = self.whooshSynth:getVolume()
-    local newVol = currentVol + (self.whooshTargetVol - currentVol) * 0.3
-    self.whooshSynth:setVolume(newVol)
+    -- Smooth volume fade out (track manually, getVolume returns L,R channels)
+    self.whooshCurrentVol = self.whooshCurrentVol + (self.whooshTargetVol - self.whooshCurrentVol) * 0.3
 
-    -- Stop synth if volume is near zero
-    if newVol < 0.005 and self.whooshPlaying and self.whooshTargetVol == 0 then
+    -- Stop synth when quiet
+    if self.whooshCurrentVol < 0.005 and self.whooshPlaying and self.whooshTargetVol == 0 then
         self.whooshSynth:stop()
         self.whooshPlaying = false
     end
