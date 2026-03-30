@@ -7,11 +7,9 @@ import "CoreLibs/graphics"
 import "CoreLibs/sprites"
 import "CoreLibs/timer"
 import "CoreLibs/crank"
-import "CoreLibs/animation"
 
 -- Local references for performance
 local gfx <const> = playdate.graphics
-local geo <const> = playdate.geometry
 
 -- Import game modules
 import "player"
