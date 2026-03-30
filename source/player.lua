@@ -22,6 +22,7 @@ function Player:init(centerX, centerY)
     self.centerX = centerX
     self.centerY = centerY
     self.angle = 270              -- Start at bottom (270 degrees)
+    self.prevAngle = 270          -- Previous frame angle (for gap detection)
     self.orbitRadius = ORBIT_RADIUS
 
     -- Position on the orbit
@@ -50,6 +51,10 @@ function Player:init(centerX, centerY)
     self.projectiles = {}
     self.shootCooldown = 0
 
+    -- Bubble shield (absorbs one hit)
+    self.hasShield = false
+    self.shieldTimer = 0  -- Animation timer for shield visual
+
     self:updatePosition()
 end
 
@@ -68,6 +73,9 @@ function Player:updatePosition()
 end
 
 function Player:update(crankChange, gameSpeed)
+    -- Store previous angle BEFORE updating (for gap detection)
+    self.prevAngle = self.angle
+
     self:updateAngle(crankChange)
 
     -- Handle jumping
@@ -109,6 +117,11 @@ function Player:update(crankChange, gameSpeed)
 
     -- Flame animation
     self.flameFrame = self.flameFrame + 1
+
+    -- Shield animation
+    if self.hasShield then
+        self.shieldTimer = self.shieldTimer + 1
+    end
 
     -- Update sparks
     self:updateSparks()
@@ -161,6 +174,24 @@ function Player:addAmmo(amount)
     self.ammo = math.min(self.maxAmmo, self.ammo + amount)
 end
 
+function Player:activateShield()
+    self.hasShield = true
+    self.shieldTimer = 0
+end
+
+function Player:useShield()
+    if self.hasShield then
+        self.hasShield = false
+        self.shieldTimer = 0
+        return true
+    end
+    return false
+end
+
+function Player:getPrevAngle()
+    return self.prevAngle
+end
+
 function Player:createSparks(count)
     for i = 1, count do
         local spark = {
@@ -210,6 +241,25 @@ function Player:draw()
 
     -- Draw the matchstick character
     self:drawMatchstick()
+
+    -- Draw bubble shield around player
+    if self.hasShield then
+        local shimmer = math.sin(self.shieldTimer * 0.15) * 2
+        local shieldRadius = 22 + shimmer
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setLineWidth(2)
+        gfx.drawCircleAtPoint(self.x, self.y, shieldRadius)
+        -- Inner dither ring for bubble effect
+        gfx.setDitherPattern(0.7, gfx.image.kDitherTypeBayer4x4)
+        gfx.drawCircleAtPoint(self.x, self.y, shieldRadius - 3)
+        -- Highlight
+        local hlAngle = self.shieldTimer * 0.1
+        local hlX = self.x + (shieldRadius - 4) * math.cos(hlAngle)
+        local hlY = self.y + (shieldRadius - 4) * math.sin(hlAngle)
+        gfx.setColor(gfx.kColorWhite)
+        gfx.fillCircleAtPoint(hlX, hlY, 2)
+        gfx.setLineWidth(1)
+    end
 
     -- Draw "falling" warning indicator
     if self.fallTimer > 0 and not self.isJumping then
