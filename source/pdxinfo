@@ -1,0 +1,7 @@
+name=Torchy's World
+author=THE TOYMAKERS
+description=A high-speed infinite runner with a twist! Use the crank to rotate 360 degrees and dodge obstacles on your skateboard.
+bundleID=com.thetoymakers.torchysworld
+version=1.0.0
+buildNumber=1
+imagePath=images/launcher

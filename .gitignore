@@ -1,0 +1,14 @@
+# Compiled Playdate game
+*.pdx/
+*.pdx
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
