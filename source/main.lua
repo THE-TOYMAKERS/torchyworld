@@ -1,6 +1,6 @@
 -- Torchy's World
--- A high-speed infinite runner for Playdate
--- Use the crank to rotate 360° around the screen, press A to jump!
+-- A Smash Hit-style game for Playdate
+-- Use the crank to rotate around the screen, press A to jump, B to shoot!
 
 import "CoreLibs/object"
 import "CoreLibs/graphics"
@@ -32,6 +32,7 @@ local highScore = 0
 local gameSpeed = 1.0
 local distance = 0
 local frameCount = 0
+local obstaclesDestroyed = 0
 
 -- Game objects
 local player = nil
@@ -49,10 +50,10 @@ local CENTER_Y <const> = SCREEN_H / 2
 local titleBounce = 0
 local titleDir = 1
 local titleSkaterAngle = 0
+local titleFlameFrame = 0
 
 -- Ready countdown
 local readyTimer = 0
-local readyText = ""
 
 -- Screen shake
 local shakeAmount = 0
@@ -85,13 +86,19 @@ end
 
 local function drawTitle()
     gfx.clear(gfx.kColorWhite)
+    titleFlameFrame = titleFlameFrame + 1
 
-    -- Animated background pattern
-    for i = 0, 10 do
-        local x = (frameCount * 2 + i * 40) % (SCREEN_W + 40) - 20
+    -- Radial background particles (preview of gameplay feel)
+    for i = 0, 15 do
+        local angle = (frameCount * 3 + i * 24) % 360
+        local radius = (frameCount * 2 + i * 15) % 160
+        local rad = math.rad(angle)
+        local px = CENTER_X + radius * math.cos(rad)
+        local py = CENTER_Y + radius * math.sin(rad)
         gfx.setColor(gfx.kColorBlack)
-        gfx.setDitherPattern(0.7, gfx.image.kDitherTypeBayer8x8)
-        gfx.fillRect(x, 0, 20, SCREEN_H)
+        gfx.setDitherPattern(0.7, gfx.image.kDitherTypeBayer4x4)
+        local dotSize = math.max(1, math.floor(radius / 80))
+        gfx.fillCircleAtPoint(px, py, dotSize)
     end
 
     -- Title background box
@@ -109,43 +116,59 @@ local function drawTitle()
 
     local subFont = gfx.getSystemFont()
     gfx.setFont(subFont)
-    gfx.drawTextAligned("Crank It Up!", CENTER_X, 58 + titleBounce, kTextAlignment.center)
+    gfx.drawTextAligned("Crank & Smash!", CENTER_X, 58 + titleBounce, kTextAlignment.center)
 
-    -- Rotating skater preview
+    -- Matchstick preview character orbiting
     local previewRadius = 40
-    local skaterX = CENTER_X + previewRadius * math.cos(math.rad(titleSkaterAngle))
-    local skaterY = 155 + previewRadius * math.sin(math.rad(titleSkaterAngle))
+    local skaterRad = math.rad(titleSkaterAngle)
+    local skaterX = CENTER_X + previewRadius * math.cos(skaterRad)
+    local skaterY = 155 + previewRadius * math.sin(skaterRad)
 
-    -- Draw orbit circle
+    -- Orbit circle
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(1)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.drawCircleAtPoint(CENTER_X, 155, previewRadius)
 
-    -- Draw center hub
+    -- Center hub
     gfx.setColor(gfx.kColorBlack)
     gfx.fillCircleAtPoint(CENTER_X, 155, 8)
     gfx.setColor(gfx.kColorWhite)
     gfx.fillCircleAtPoint(CENTER_X, 155, 4)
 
-    -- Draw skater dot
+    -- Draw mini matchstick character
+    local outX = math.cos(skaterRad)
+    local outY = math.sin(skaterRad)
+
+    -- Stick body
     gfx.setColor(gfx.kColorBlack)
-    gfx.fillCircleAtPoint(skaterX, skaterY, 10)
+    gfx.setLineWidth(2)
+    gfx.drawLine(skaterX, skaterY, skaterX + outX * 10, skaterY + outY * 10)
+
+    -- Match head
+    gfx.fillCircleAtPoint(skaterX + outX * 12, skaterY + outY * 12, 3)
+
+    -- Flame
+    local flicker = math.sin(titleFlameFrame * 0.4) * 1.5
+    gfx.fillCircleAtPoint(skaterX + outX * (16 + flicker), skaterY + outY * (16 + flicker), 5)
     gfx.setColor(gfx.kColorWhite)
-    gfx.fillCircleAtPoint(skaterX, skaterY, 6)
+    gfx.fillCircleAtPoint(skaterX + outX * (16 + flicker), skaterY + outY * (16 + flicker), 3)
 
     -- Instructions
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
     gfx.setFont(subFont)
 
+    -- Controls info
+    gfx.drawTextAligned("A=Jump  B=Shoot", CENTER_X, 198, kTextAlignment.center)
+
     -- Blinking "Press A"
     if frameCount % 40 < 28 then
-        gfx.drawTextAligned("Press A to Start!", CENTER_X, 210, kTextAlignment.center)
+        gfx.drawTextAligned("Press A to Start!", CENTER_X, 213, kTextAlignment.center)
     end
 
     -- High score
     if highScore > 0 then
-        gfx.drawTextAligned("Best: " .. highScore, CENTER_X, 225, kTextAlignment.center)
+        gfx.drawTextAligned("Best: " .. highScore, CENTER_X, 228, kTextAlignment.center)
     end
 
     -- Animate
@@ -157,11 +180,12 @@ local function drawTitle()
 end
 
 local function updateTitle()
+    frameCount = frameCount + 1
     drawTitle()
 
     if playdate.buttonJustPressed(playdate.kButtonA) then
         gameState = STATE_READY
-        readyTimer = 90 -- 3 seconds at 30fps
+        readyTimer = 90
         initGame()
     end
 end
@@ -177,6 +201,7 @@ function initGame()
     frameCount = 0
     shakeAmount = 0
     shakeDuration = 0
+    obstaclesDestroyed = 0
 
     player = Player(CENTER_X, CENTER_Y)
     world = World()
@@ -208,12 +233,10 @@ local function updateReady()
         countText = "GO!"
     end
 
-    -- Big countdown number
     local boldFont = gfx.getSystemFont(gfx.font.kVariantBold)
     gfx.setFont(boldFont)
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
 
-    -- Background for readability
     local textW = boldFont:getTextWidth(countText)
     gfx.setColor(gfx.kColorWhite)
     gfx.fillRoundRect(CENTER_X - textW/2 - 20, CENTER_Y - 20, textW + 40, 40, 6)
@@ -221,10 +244,10 @@ local function updateReady()
     gfx.drawRoundRect(CENTER_X - textW/2 - 20, CENTER_Y - 20, textW + 40, 40, 6)
     gfx.drawTextAligned(countText, CENTER_X, CENTER_Y - 10, kTextAlignment.center)
 
-    -- "Use the crank!" hint
+    -- Controls hint
     local subFont = gfx.getSystemFont()
     gfx.setFont(subFont)
-    gfx.drawTextAligned("Use the crank to rotate!", CENTER_X, CENTER_Y + 30, kTextAlignment.center)
+    gfx.drawTextAligned("Crank=Rotate  A=Jump  B=Shoot", CENTER_X, CENTER_Y + 30, kTextAlignment.center)
 
     -- Let player rotate during countdown
     local crankChange = playdate.getCrankChange()
@@ -243,7 +266,7 @@ end
 local function updatePlaying()
     frameCount = frameCount + 1
 
-    -- Progressive difficulty: speed increases over time
+    -- Progressive difficulty
     gameSpeed = 1.0 + (distance / 500) * 0.5
     if gameSpeed > 4.0 then
         gameSpeed = 4.0
@@ -252,21 +275,33 @@ local function updatePlaying()
     -- Get crank input
     local crankChange = playdate.getCrankChange()
 
-    -- Update player
+    -- Update player (handles input, movement, shooting)
     player:update(crankChange, gameSpeed)
 
-    -- Update world (scrolling background/track)
+    -- Update world (radial particles, visual effects)
     world:update(gameSpeed)
 
-    -- Update obstacles
+    -- Update obstacles (platforms, incoming obstacles, warnings)
     obstacleManager:update(gameSpeed, distance)
 
-    -- Check collisions
+    -- Check projectile-obstacle collisions (Smash Hit style)
+    local hits = obstacleManager:checkProjectileCollisions(player.projectiles)
+    if hits > 0 then
+        score = score + hits * 25
+        obstaclesDestroyed = obstaclesDestroyed + hits
+        triggerShake(2, 5) -- small satisfying shake on hit
+        hudDisplay:showHitCombo(hits, score)
+        -- Breaking obstacles gives back some ammo (like Smash Hit ball mechanic)
+        player:addAmmo(hits)
+    end
+
+    -- Check player-obstacle collisions
     local collision, collisionType = obstacleManager:checkCollision(player)
     if collision then
         if collisionType == "star" then
-            -- Collect star for bonus points
             score = score + 50
+            -- Stars give ammo (Smash Hit: pickups give more balls)
+            player:addAmmo(3)
         else
             -- Hit obstacle - game over!
             triggerShake(6, 15)
@@ -278,9 +313,8 @@ local function updatePlaying()
         end
     end
 
-    -- Check if player is on a platform (must be on a valid platform position)
+    -- Platform fall check
     if not player.isJumping and not obstacleManager:isOnPlatform(player) then
-        -- Falling! Grace period based on speed
         player.fallTimer = player.fallTimer + 1
         if player.fallTimer > 10 then
             triggerShake(6, 15)
@@ -296,13 +330,13 @@ local function updatePlaying()
 
     -- Score based on distance
     distance = distance + gameSpeed
-    score = math.floor(distance / 3)
+    score = math.max(score, math.floor(distance / 3))
 
     -- ---- DRAW EVERYTHING ----
     gfx.clear(gfx.kColorWhite)
     updateShake()
 
-    -- Draw world background
+    -- Draw world background (radial particles, tunnel effect)
     world:draw(CENTER_X, CENTER_Y, gameSpeed)
 
     -- Draw orbital track
@@ -332,11 +366,11 @@ local function updatePlaying()
         gfx.drawLine(x1, y1, x2, y2)
     end
 
-    -- Draw player
+    -- Draw player (matchstick + projectiles)
     player:draw()
 
-    -- Draw HUD
-    hudDisplay:draw(score, highScore, gameSpeed, distance)
+    -- Draw HUD (score, speed, ammo)
+    hudDisplay:draw(score, highScore, gameSpeed, distance, player.ammo, player.maxAmmo)
 
     -- Reset draw offset after shake
     if shakeDuration <= 0 then
@@ -349,13 +383,11 @@ end
 -- ============================================================
 
 local gameOverTimer = 0
-local gameOverFlash = 0
 
 local function updateGameOver()
     frameCount = frameCount + 1
     gameOverTimer = gameOverTimer + 1
 
-    -- Keep drawing the frozen game world
     gfx.clear(gfx.kColorWhite)
     updateShake()
 
@@ -381,45 +413,46 @@ local function updateGameOver()
 
     -- Game Over panel
     gfx.setColor(gfx.kColorWhite)
-    gfx.fillRoundRect(60, 40, 280, 160, 10)
+    gfx.fillRoundRect(60, 30, 280, 180, 10)
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(3)
-    gfx.drawRoundRect(60, 40, 280, 160, 10)
+    gfx.drawRoundRect(60, 30, 280, 180, 10)
 
     -- Title
     local boldFont = gfx.getSystemFont(gfx.font.kVariantBold)
     gfx.setFont(boldFont)
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
-    gfx.drawTextAligned("GAME OVER", CENTER_X, 55, kTextAlignment.center)
+    gfx.drawTextAligned("GAME OVER", CENTER_X, 42, kTextAlignment.center)
 
-    -- Divider line
+    -- Divider
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(2)
-    gfx.drawLine(80, 78, 320, 78)
+    gfx.drawLine(80, 64, 320, 64)
 
-    -- Score display
+    -- Stats
     local font = gfx.getSystemFont()
     gfx.setFont(font)
-    gfx.drawTextAligned("Score: " .. score, CENTER_X, 90, kTextAlignment.center)
-    gfx.drawTextAligned("Best:  " .. highScore, CENTER_X, 110, kTextAlignment.center)
+    gfx.drawTextAligned("Score: " .. score, CENTER_X, 74, kTextAlignment.center)
+    gfx.drawTextAligned("Best:  " .. highScore, CENTER_X, 94, kTextAlignment.center)
 
-    -- Distance
     local distStr = string.format("Distance: %.0fm", distance / 10)
-    gfx.drawTextAligned(distStr, CENTER_X, 130, kTextAlignment.center)
+    gfx.drawTextAligned(distStr, CENTER_X, 114, kTextAlignment.center)
 
-    -- New high score indicator
+    gfx.drawTextAligned("Destroyed: " .. obstaclesDestroyed, CENTER_X, 134, kTextAlignment.center)
+
+    -- New high score
     if score >= highScore and score > 0 then
         if frameCount % 20 < 14 then
             gfx.setFont(boldFont)
-            gfx.drawTextAligned("NEW BEST!", CENTER_X, 150, kTextAlignment.center)
+            gfx.drawTextAligned("NEW BEST!", CENTER_X, 156, kTextAlignment.center)
         end
     end
 
-    -- Restart prompt
+    -- Restart
     if gameOverTimer > 45 then
         if frameCount % 30 < 22 then
             gfx.setFont(font)
-            gfx.drawTextAligned("Press A to Retry", CENTER_X, 175, kTextAlignment.center)
+            gfx.drawTextAligned("Press A to Retry", CENTER_X, 190, kTextAlignment.center)
         end
 
         if playdate.buttonJustPressed(playdate.kButtonA) then
@@ -448,7 +481,6 @@ function playdate.update()
         updateGameOver()
     end
 
-    -- Always update timers
     playdate.timer.updateTimers()
 end
 
@@ -457,12 +489,10 @@ end
 -- ============================================================
 
 function playdate.crankUndocked()
-    -- Crank is out, good to go
 end
 
 function playdate.crankDocked()
-    -- Show message if crank is stowed during gameplay
     if gameState == STATE_PLAYING then
-        -- Pause or warn
+        -- Crank stowed warning could go here
     end
 end
