@@ -1,5 +1,6 @@
 -- World module for Torchy's World
--- Handles the scrolling background and visual environment
+-- Handles the scrolling background with radial particles coming AT the player
+-- Creates a Smash Hit-style forward motion feel
 
 local gfx <const> = playdate.graphics
 
@@ -11,15 +12,10 @@ local SCREEN_H <const> = 240
 function World:init()
     World.super.init(self)
 
-    -- Background stars/dots that scroll
-    self.bgDots = {}
-    for i = 1, 40 do
-        table.insert(self.bgDots, {
-            x = math.random(0, SCREEN_W),
-            y = math.random(0, SCREEN_H),
-            speed = math.random(1, 3) * 0.5,
-            size = math.random(1, 3)
-        })
+    -- Radial particles that fly outward from center (coming at the player)
+    self.particles = {}
+    for i = 1, 50 do
+        self:spawnParticle(true) -- randomize initial positions
     end
 
     -- Ring pulse effect
@@ -29,24 +25,51 @@ function World:init()
     -- Track rotation visual
     self.trackRotation = 0
 
-    -- Background scroll offset
-    self.scrollOffset = 0
-
-    -- Speed lines
+    -- Radial speed lines (appear at higher speeds)
     self.speedLines = {}
 
-    -- Ground pattern offset
-    self.patternOffset = 0
+    -- Tunnel ring effects (depth rings expanding outward)
+    self.tunnelRings = {}
+    self.tunnelTimer = 0
+end
+
+function World:spawnParticle(randomizeRadius)
+    local angle = math.random() * 360
+    local startRadius
+    if randomizeRadius then
+        startRadius = math.random(5, 160)
+    else
+        startRadius = math.random(2, 10) -- spawn near center
+    end
+
+    table.insert(self.particles, {
+        angle = angle,
+        radius = startRadius,
+        speed = 0.5 + math.random() * 1.5,
+        size = math.random(1, 3),
+        maxRadius = 180 + math.random(0, 40) -- despawn radius
+    })
 end
 
 function World:update(gameSpeed)
-    -- Scroll background dots
-    for _, dot in ipairs(self.bgDots) do
-        dot.x = dot.x - dot.speed * gameSpeed
-        if dot.x < -5 then
-            dot.x = SCREEN_W + 5
-            dot.y = math.random(0, SCREEN_H)
+    local centerX = SCREEN_W / 2
+    local centerY = SCREEN_H / 2
+
+    -- Update radial particles (move outward from center = "coming at" the player)
+    for i = #self.particles, 1, -1 do
+        local p = self.particles[i]
+        p.radius = p.radius + p.speed * gameSpeed
+
+        -- Remove if past screen edge and respawn near center
+        if p.radius > p.maxRadius then
+            table.remove(self.particles, i)
+            self:spawnParticle(false)
         end
+    end
+
+    -- Ensure enough particles
+    while #self.particles < 50 do
+        self:spawnParticle(false)
     end
 
     -- Ring pulse animation
@@ -58,57 +81,97 @@ function World:update(gameSpeed)
     -- Track visual rotation
     self.trackRotation = (self.trackRotation + gameSpeed * 1.5) % 360
 
-    -- Scroll offset
-    self.scrollOffset = (self.scrollOffset + gameSpeed * 2) % 40
-
-    -- Pattern offset
-    self.patternOffset = (self.patternOffset + gameSpeed) % 20
-
-    -- Generate speed lines at higher speeds
+    -- Generate radial speed lines at higher speeds
     if gameSpeed > 1.5 then
-        local lineChance = math.min(0.4, (gameSpeed - 1.5) * 0.2)
+        local lineChance = math.min(0.5, (gameSpeed - 1.5) * 0.25)
         if math.random() < lineChance then
+            local angle = math.random() * 360
             table.insert(self.speedLines, {
-                x = SCREEN_W + 10,
-                y = math.random(10, SCREEN_H - 10),
-                length = math.random(20, 60),
-                speed = gameSpeed * (3 + math.random() * 3)
+                angle = angle,
+                radius = 20 + math.random() * 30,
+                length = 15 + math.random() * 30,
+                speed = gameSpeed * (4 + math.random() * 4)
             })
         end
     end
 
-    -- Update speed lines
+    -- Update speed lines (radial, moving outward)
     for i = #self.speedLines, 1, -1 do
         local line = self.speedLines[i]
-        line.x = line.x - line.speed
-        if line.x + line.length < 0 then
+        line.radius = line.radius + line.speed
+        if line.radius > 200 then
             table.remove(self.speedLines, i)
+        end
+    end
+
+    -- Tunnel ring effect (concentric rings expanding outward)
+    self.tunnelTimer = self.tunnelTimer + gameSpeed
+    if self.tunnelTimer > 15 then
+        self.tunnelTimer = 0
+        table.insert(self.tunnelRings, {
+            radius = 5,
+            speed = 1.5 + gameSpeed * 0.5,
+            opacity = 0.8
+        })
+    end
+
+    for i = #self.tunnelRings, 1, -1 do
+        local ring = self.tunnelRings[i]
+        ring.radius = ring.radius + ring.speed
+        ring.opacity = ring.opacity - 0.008
+        if ring.opacity <= 0 or ring.radius > 200 then
+            table.remove(self.tunnelRings, i)
         end
     end
 end
 
 function World:draw(centerX, centerY, gameSpeed)
-    -- Background dots
-    gfx.setColor(gfx.kColorBlack)
-    for _, dot in ipairs(self.bgDots) do
-        if dot.size <= 1 then
-            gfx.drawPixel(dot.x, dot.y)
-        else
-            gfx.fillCircleAtPoint(dot.x, dot.y, dot.size)
+    -- Draw tunnel rings (depth effect, like flying through a tunnel)
+    for _, ring in ipairs(self.tunnelRings) do
+        if ring.opacity > 0.1 then
+            gfx.setColor(gfx.kColorBlack)
+            gfx.setDitherPattern(1.0 - ring.opacity * 0.3, gfx.image.kDitherTypeBayer8x8)
+            gfx.setLineWidth(1)
+            gfx.drawCircleAtPoint(centerX, centerY, ring.radius)
         end
     end
 
-    -- Corner decorations with scrolling pattern
-    self:drawCornerPattern(0, 0, gameSpeed)
-    self:drawCornerPattern(SCREEN_W - 60, 0, gameSpeed)
-    self:drawCornerPattern(0, SCREEN_H - 40, gameSpeed)
-    self:drawCornerPattern(SCREEN_W - 60, SCREEN_H - 40, gameSpeed)
+    -- Draw radial particles (dots flying outward from center)
+    gfx.setColor(gfx.kColorBlack)
+    for _, p in ipairs(self.particles) do
+        local rad = math.rad(p.angle)
+        local px = centerX + p.radius * math.cos(rad)
+        local py = centerY + p.radius * math.sin(rad)
 
-    -- Speed lines
+        -- Only draw if on screen
+        if px > -5 and px < SCREEN_W + 5 and py > -5 and py < SCREEN_H + 5 then
+            -- Particles grow slightly as they get further out (perspective)
+            local drawSize = math.max(1, math.floor(p.size * (0.5 + p.radius / 200)))
+
+            -- Farther particles are more opaque (closer to viewer)
+            local ditherAmount = math.max(0.2, 1.0 - (p.radius / p.maxRadius))
+            gfx.setDitherPattern(1.0 - ditherAmount, gfx.image.kDitherTypeBayer4x4)
+
+            if drawSize <= 1 then
+                gfx.drawPixel(px, py)
+            else
+                gfx.fillCircleAtPoint(px, py, drawSize)
+            end
+        end
+    end
+
+    -- Draw radial speed lines
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(1)
     for _, line in ipairs(self.speedLines) do
-        gfx.drawLine(line.x, line.y, line.x + line.length, line.y)
+        local rad = math.rad(line.angle)
+        local r1 = line.radius
+        local r2 = line.radius + line.length
+        local x1 = centerX + r1 * math.cos(rad)
+        local y1 = centerY + r1 * math.sin(rad)
+        local x2 = centerX + r2 * math.cos(rad)
+        local y2 = centerY + r2 * math.sin(rad)
+        gfx.drawLine(x1, y1, x2, y2)
     end
 
     -- Orbit ring decorations (tick marks around the orbit)
@@ -119,7 +182,6 @@ function World:draw(centerX, centerY, gameSpeed)
         local innerR = orbitRadius - 4
         local outerR = orbitRadius + 4
 
-        -- Alternating tick sizes
         if i % 3 == 0 then
             innerR = orbitRadius - 6
             outerR = orbitRadius + 6
@@ -146,17 +208,4 @@ function World:draw(centerX, centerY, gameSpeed)
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.drawCircleAtPoint(centerX, centerY, orbitRadius - 15)
-end
-
-function World:drawCornerPattern(x, y, gameSpeed)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.setDitherPattern(0.8, gfx.image.kDitherTypeBayer8x8)
-
-    local offset = math.floor(self.patternOffset)
-    for i = 0, 3 do
-        local lineY = y + i * 10 + (offset % 10)
-        if lineY >= y and lineY <= y + 40 then
-            gfx.drawLine(x, lineY, x + 60, lineY)
-        end
-    end
 end
