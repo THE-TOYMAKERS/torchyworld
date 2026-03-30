@@ -180,10 +180,10 @@ function initGame()
     shakeAmount = 0
     shakeDuration = 0
 
-    player = Player.new(CENTER_X, CENTER_Y)
-    world = World.new()
-    obstacleManager = ObstacleManager.new()
-    hudDisplay = HUD.new()
+    player = Player(CENTER_X, CENTER_Y)
+    world = World()
+    obstacleManager = ObstacleManager()
+    hudDisplay = HUD()
 end
 
 -- ============================================================
