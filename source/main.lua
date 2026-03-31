@@ -747,6 +747,8 @@ end
 -- READY
 -- ============================================================
 
+local startScoreTally  -- forward declaration
+
 local function updateReady()
     gfx.clear(gfx.kColorWhite)
     world:draw(CENTER_X, CENTER_Y, gameSpeed)
@@ -909,7 +911,7 @@ end
 -- SCORE TALLY (animated score breakdown)
 -- ============================================================
 
-local function startScoreTally()
+startScoreTally = function()
     gameState = STATE_SCORE_TALLY
     tallyPhase = 0
     tallyTimer = 0
