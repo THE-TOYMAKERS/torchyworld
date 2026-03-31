@@ -1,4 +1,4 @@
--- Sound module for Torchy's World
+-- Sound module for Chrono Break
 -- SFX generated via Playdate's synthesizer API
 -- Background music: torchyworld.wav with dynamic tempo scaling
 
@@ -45,6 +45,20 @@ function SoundManager:init()
     self.gameOverSynth = snd.synth.new(snd.kWaveSawtooth)
     self.gameOverSynth:setADSR(0.0, 0.3, 0.0, 0.3)
     self.gameOverSynth:setVolume(0.35)
+
+    -- === DEATH SYNTH (Pokemon-style descending faint) ===
+    self.deathSynth = snd.synth.new(snd.kWaveSquare)
+    self.deathSynth:setADSR(0.005, 0.15, 0.3, 0.1)
+    self.deathSynth:setVolume(0.3)
+
+    -- === BOOT-UP / JINGLE SYNTHS ===
+    self.jingleSynth = snd.synth.new(snd.kWaveTriangle)
+    self.jingleSynth:setADSR(0.01, 0.1, 0.4, 0.2)
+    self.jingleSynth:setVolume(0.3)
+
+    self.jingleBassSynth = snd.synth.new(snd.kWaveSine)
+    self.jingleBassSynth:setADSR(0.01, 0.15, 0.3, 0.2)
+    self.jingleBassSynth:setVolume(0.2)
 
     -- ===============================================
     -- BACKGROUND MUSIC - WAV file with dynamic tempo
@@ -141,6 +155,56 @@ function SoundManager:updateMusic(gameSpeed)
     -- Smooth transition to avoid jarring speed changes
     self.currentRate = self.currentRate + (targetRate - self.currentRate) * 0.1
     self.bgmPlayer:setRate(self.currentRate)
+end
+
+-- === DEATH SOUND (Pokemon-style descending notes) ===
+
+function SoundManager:playDeath()
+    -- Descending whole-tone run: B4 -> A4 -> G4 -> E4 -> D4 -> low C4
+    self.deathSynth:playMIDINote(71, 0.35, 0.15)  -- B4
+    playdate.timer.performAfterDelay(120, function()
+        self.deathSynth:playMIDINote(69, 0.32, 0.15) -- A4
+    end)
+    playdate.timer.performAfterDelay(240, function()
+        self.deathSynth:playMIDINote(67, 0.30, 0.15) -- G4
+    end)
+    playdate.timer.performAfterDelay(360, function()
+        self.deathSynth:playMIDINote(64, 0.28, 0.18) -- E4
+    end)
+    playdate.timer.performAfterDelay(500, function()
+        self.deathSynth:playMIDINote(62, 0.25, 0.2)  -- D4
+    end)
+    playdate.timer.performAfterDelay(660, function()
+        self.deathSynth:playMIDINote(60, 0.30, 0.4)  -- C4 (long final)
+    end)
+end
+
+-- === BOOT-UP JINGLE (plays on splash/menu load) ===
+
+function SoundManager:playBootJingle()
+    -- Bright ascending chime: C5 -> E5 -> G5 -> C6 with bass
+    self.jingleBassSynth:playMIDINote(48, 0.25, 0.4) -- C3 bass
+    self.jingleSynth:playMIDINote(72, 0.30, 0.12) -- C5
+    playdate.timer.performAfterDelay(100, function()
+        self.jingleSynth:playMIDINote(76, 0.30, 0.12) -- E5
+    end)
+    playdate.timer.performAfterDelay(200, function()
+        self.jingleSynth:playMIDINote(79, 0.30, 0.12) -- G5
+    end)
+    playdate.timer.performAfterDelay(350, function()
+        self.jingleSynth:playMIDINote(84, 0.35, 0.3) -- C6 (bright finish)
+        self.jingleBassSynth:playMIDINote(60, 0.20, 0.3) -- C4 bass resolve
+    end)
+end
+
+-- === MENU ARRIVAL SOUND (when transitioning to main menu) ===
+
+function SoundManager:playMenuArrive()
+    -- Quick two-note confirm: G5 -> C6
+    self.jingleSynth:playMIDINote(79, 0.25, 0.1) -- G5
+    playdate.timer.performAfterDelay(80, function()
+        self.jingleSynth:playMIDINote(84, 0.30, 0.2) -- C6
+    end)
 end
 
 function SoundManager:cleanup()
