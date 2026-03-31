@@ -241,6 +241,303 @@ local function drawTimeWizard(cx, cy, frame, difficulty, angerTimer)
 end
 
 -- ============================================================
+-- BIG TIME WIZARD for menu (based on sketch)
+-- Clock head, boxy hat w/ hourglass, mustache, armored body,
+-- cape, spring legs, big boots, gloved magic hand w/ lightning
+-- ============================================================
+
+local function drawTimeWizardBig(cx, cy, frame)
+    local bob = math.sin(frame * 0.06) * 3  -- gentle idle bob
+    cy = cy + bob
+
+    -- === CAPE (behind body) ===
+    gfx.setColor(gfx.kColorBlack)
+    local capeSway = math.sin(frame * 0.08) * 3
+    -- Left cape panel
+    gfx.fillPolygon(
+        cx - 18, cy - 4,
+        cx - 30 - capeSway, cy + 40,
+        cx - 22 - capeSway, cy + 50,
+        cx - 10, cy + 20
+    )
+    -- Right cape panel
+    gfx.fillPolygon(
+        cx + 18, cy - 4,
+        cx + 30 + capeSway, cy + 40,
+        cx + 22 + capeSway, cy + 50,
+        cx + 10, cy + 20
+    )
+    -- Cape bottom curve (flowing)
+    gfx.setDitherPattern(0.3, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillPolygon(
+        cx - 22 - capeSway, cy + 50,
+        cx - 14 - capeSway * 0.5, cy + 56,
+        cx, cy + 48,
+        cx + 14 + capeSway * 0.5, cy + 56,
+        cx + 22 + capeSway, cy + 50,
+        cx + 10, cy + 20,
+        cx - 10, cy + 20
+    )
+
+    -- === ARMORED BODY ===
+    gfx.setColor(gfx.kColorBlack)
+    -- Main torso shape
+    gfx.fillPolygon(
+        cx - 16, cy - 6,
+        cx + 16, cy - 6,
+        cx + 14, cy + 22,
+        cx - 14, cy + 22
+    )
+    -- Inner armor (white area with hourglass)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillPolygon(
+        cx - 12, cy - 2,
+        cx + 12, cy - 2,
+        cx + 10, cy + 18,
+        cx - 10, cy + 18
+    )
+    -- Hourglass emblem on chest
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    -- Top triangle of hourglass
+    gfx.fillPolygon(cx - 5, cy + 2, cx + 5, cy + 2, cx, cy + 8)
+    -- Bottom triangle of hourglass
+    gfx.fillPolygon(cx - 5, cy + 16, cx + 5, cy + 16, cx, cy + 10)
+    -- Hourglass center dot
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(cx, cy + 9, 1)
+    -- Armor edge lines
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(1)
+    gfx.drawLine(cx - 16, cy - 6, cx - 14, cy + 22)
+    gfx.drawLine(cx + 16, cy - 6, cx + 14, cy + 22)
+
+    -- === SPRING/SEGMENTED LEGS ===
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    local legSpread = 6
+    for seg = 0, 4 do
+        local segY = cy + 22 + seg * 5
+        local zigzag = (seg % 2 == 0) and 3 or -3
+        -- Left leg
+        gfx.drawLine(cx - legSpread + zigzag, segY, cx - legSpread - zigzag, segY + 5)
+        -- Right leg
+        gfx.drawLine(cx + legSpread + zigzag, segY, cx + legSpread - zigzag, segY + 5)
+    end
+
+    -- === BIG ROUND BOOTS ===
+    local bootY = cy + 47
+    gfx.setColor(gfx.kColorBlack)
+    -- Left boot
+    gfx.fillCircleAtPoint(cx - legSpread - 1, bootY, 7)
+    gfx.fillRect(cx - legSpread - 8, bootY - 2, 14, 6)
+    -- Boot sole
+    gfx.fillRect(cx - legSpread - 9, bootY + 3, 16, 3)
+    -- Boot highlight
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(cx - legSpread - 2, bootY - 2, 2)
+    -- Right boot
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(cx + legSpread + 1, bootY, 7)
+    gfx.fillRect(cx + legSpread - 6, bootY - 2, 14, 6)
+    gfx.fillRect(cx + legSpread - 7, bootY + 3, 16, 3)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(cx + legSpread, bootY - 2, 2)
+
+    -- === LEFT ARM - GLOVED MAGIC HAND (raised) ===
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    -- Upper arm
+    gfx.drawLine(cx - 16, cy, cx - 26, cy - 12)
+    -- Forearm (raised up)
+    gfx.drawLine(cx - 26, cy - 12, cx - 28, cy - 28)
+
+    -- Glove (cartoon style - round palm + fingers)
+    local gloveX, gloveY = cx - 28, cy - 32
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(gloveX, gloveY, 6) -- palm
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(gloveX, gloveY, 4) -- white glove interior
+    -- Fingers (3 stubby fingers + thumb)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(gloveX - 4, gloveY - 5, 2.5) -- left finger
+    gfx.fillCircleAtPoint(gloveX, gloveY - 7, 2.5)      -- middle finger
+    gfx.fillCircleAtPoint(gloveX + 4, gloveY - 5, 2.5)  -- right finger
+    gfx.fillCircleAtPoint(gloveX + 6, gloveY - 1, 2)    -- thumb
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(gloveX - 4, gloveY - 5, 1)
+    gfx.fillCircleAtPoint(gloveX, gloveY - 7, 1)
+    gfx.fillCircleAtPoint(gloveX + 4, gloveY - 5, 1)
+
+    -- === LIGHTNING BOLTS from hand ===
+    local sparkPhase = frame % 20
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    if sparkPhase < 15 then
+        -- Bolt 1 (zigzag upward-left)
+        local bx, by = gloveX - 4, gloveY - 12
+        gfx.drawLine(bx, by, bx - 3, by - 6)
+        gfx.drawLine(bx - 3, by - 6, bx + 1, by - 8)
+        gfx.drawLine(bx + 1, by - 8, bx - 2, by - 14)
+    end
+    if sparkPhase < 10 or sparkPhase > 14 then
+        -- Bolt 2 (zigzag upward)
+        local bx, by = gloveX + 2, gloveY - 12
+        gfx.drawLine(bx, by, bx + 2, by - 5)
+        gfx.drawLine(bx + 2, by - 5, bx - 1, by - 7)
+        gfx.drawLine(bx - 1, by - 7, bx + 3, by - 13)
+    end
+    -- Small sparks/dots
+    if frame % 6 < 4 then
+        gfx.fillCircleAtPoint(gloveX - 6, gloveY - 16, 1)
+        gfx.fillCircleAtPoint(gloveX + 5, gloveY - 15, 1)
+    end
+
+    -- === RIGHT ARM - COILED/GAUNTLET ARM ===
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    -- Upper arm
+    gfx.drawLine(cx + 16, cy, cx + 24, cy + 4)
+    -- Coiled forearm (spring pattern)
+    local armX = cx + 24
+    for coil = 0, 3 do
+        local coilY = cy + 4 + coil * 5
+        gfx.drawLine(armX - 2, coilY, armX + 4, coilY + 2)
+        gfx.drawLine(armX + 4, coilY + 2, armX - 2, coilY + 5)
+    end
+    -- Fist at end
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(armX + 1, cy + 26, 5)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(armX, cy + 25, 2)
+
+    -- === CLOCK FACE HEAD ===
+    local headR = 16
+    local headY = cy - 16
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(cx, headY, headR)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(cx, headY, headR - 2)
+
+    -- Clock tick marks
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(1)
+    for i = 0, 11 do
+        local a = math.rad(i * 30)
+        local iR = headR - 5
+        local oR = headR - 2
+        gfx.drawLine(cx + iR*math.cos(a), headY + iR*math.sin(a),
+                      cx + oR*math.cos(a), headY + oR*math.sin(a))
+    end
+
+    -- Spinning clock hands
+    local hourAngle = math.rad(frame * 1.5)
+    local minAngle = math.rad(frame * 6)
+    gfx.setLineWidth(2)
+    gfx.drawLine(cx, headY, cx + 7*math.cos(hourAngle), headY + 7*math.sin(hourAngle))
+    gfx.setLineWidth(1)
+    gfx.drawLine(cx, headY, cx + 11*math.cos(minAngle), headY + 11*math.sin(minAngle))
+    -- Center pin
+    gfx.fillCircleAtPoint(cx, headY, 2)
+
+    -- === FACE on clock ===
+    -- Left eye (big, visible)
+    local eyeX, eyeY = cx - 4, headY - 1
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(eyeX, eyeY, 3.5)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(eyeX, eyeY, 2)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(eyeX + 0.5, eyeY, 1.5) -- pupil
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(eyeX - 0.5, eyeY - 1, 0.7) -- glint
+
+    -- Right eye (slightly hidden by clock hand sometimes)
+    local reyeX = cx + 4
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(reyeX, eyeY, 3)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(reyeX, eyeY, 1.5)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(reyeX + 0.5, eyeY, 1) -- pupil
+
+    -- Angry eyebrows
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    gfx.drawLine(cx - 8, headY - 6, cx - 2, headY - 4) -- left brow (angled down inward)
+    gfx.drawLine(cx + 8, headY - 6, cx + 2, headY - 4) -- right brow
+
+    -- Mouth (slight angry smirk)
+    gfx.setLineWidth(1)
+    gfx.drawLine(cx - 4, headY + 6, cx - 1, headY + 8)
+    gfx.drawLine(cx + 4, headY + 6, cx - 1, headY + 8)
+
+    -- === BIG SWOOPING MUSTACHE ===
+    gfx.setColor(gfx.kColorBlack)
+    -- Left mustache curl
+    gfx.setLineWidth(3)
+    gfx.drawLine(cx - 2, headY + 8, cx - 8, headY + 6)
+    gfx.drawLine(cx - 8, headY + 6, cx - 14, headY + 10)
+    gfx.drawLine(cx - 14, headY + 10, cx - 16, headY + 8) -- curl up at tip
+    -- Fill left mustache
+    gfx.setLineWidth(1)
+    gfx.fillPolygon(
+        cx - 1, headY + 7,
+        cx - 8, headY + 4,
+        cx - 14, headY + 8,
+        cx - 16, headY + 7,
+        cx - 14, headY + 12,
+        cx - 8, headY + 9,
+        cx - 1, headY + 10
+    )
+    -- Right mustache curl
+    gfx.setLineWidth(3)
+    gfx.drawLine(cx + 2, headY + 8, cx + 8, headY + 6)
+    gfx.drawLine(cx + 8, headY + 6, cx + 14, headY + 10)
+    gfx.drawLine(cx + 14, headY + 10, cx + 16, headY + 8)
+    gfx.fillPolygon(
+        cx + 1, headY + 7,
+        cx + 8, headY + 4,
+        cx + 14, headY + 8,
+        cx + 16, headY + 7,
+        cx + 14, headY + 12,
+        cx + 8, headY + 9,
+        cx + 1, headY + 10
+    )
+
+    -- === BOXY WIZARD HAT ===
+    local hatBase = headY - headR + 1
+    gfx.setColor(gfx.kColorBlack)
+    -- Wide brim
+    gfx.fillRect(cx - 18, hatBase - 3, 36, 5)
+    -- Boxy hat body
+    gfx.fillRect(cx - 12, hatBase - 18, 24, 16)
+    -- Hat interior detail (lighter band)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillRect(cx - 10, hatBase - 16, 20, 3)
+    -- Hourglass symbol on hat
+    gfx.setColor(gfx.kColorWhite)
+    gfx.setLineWidth(1)
+    local hgX, hgY = cx, hatBase - 10
+    gfx.drawLine(hgX - 3, hgY - 3, hgX + 3, hgY - 3)
+    gfx.drawLine(hgX - 3, hgY - 3, hgX, hgY)
+    gfx.drawLine(hgX + 3, hgY - 3, hgX, hgY)
+    gfx.drawLine(hgX - 3, hgY + 3, hgX + 3, hgY + 3)
+    gfx.drawLine(hgX - 3, hgY + 3, hgX, hgY)
+    gfx.drawLine(hgX + 3, hgY + 3, hgX, hgY)
+    -- Small antenna/point on top
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    gfx.drawLine(cx, hatBase - 18, cx, hatBase - 24)
+    gfx.fillCircleAtPoint(cx, hatBase - 25, 2)
+    -- Small clock on antenna ball
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(cx, hatBase - 25, 1)
+
+    gfx.setLineWidth(1)
+end
+
+-- ============================================================
 -- MENU (Home Screen)
 -- ============================================================
 
@@ -248,53 +545,44 @@ local function drawMenuBackground()
     gfx.clear(gfx.kColorWhite)
     titleFlameFrame = titleFlameFrame + 1
 
-    for i = 0, 15 do
-        local angle = (frameCount * 3 + i * 24) % 360
-        local radius = (frameCount * 2 + i * 15) % 160
+    -- Floating clock particles in background
+    for i = 0, 11 do
+        local angle = (frameCount * 2 + i * 30) % 360
+        local radius = (frameCount * 1.5 + i * 18) % 180
         local rad = math.rad(angle)
+        local px = CENTER_X + radius*math.cos(rad)
+        local py = CENTER_Y + radius*math.sin(rad)
         gfx.setColor(gfx.kColorBlack)
-        gfx.setDitherPattern(0.7, gfx.image.kDitherTypeBayer4x4)
-        gfx.fillCircleAtPoint(CENTER_X + radius*math.cos(rad), CENTER_Y + radius*math.sin(rad),
-                               math.max(1, math.floor(radius / 80)))
+        gfx.setDitherPattern(0.75, gfx.image.kDitherTypeBayer4x4)
+        local sz = math.max(1, math.floor(radius / 90))
+        gfx.fillCircleAtPoint(px, py, sz)
+        -- Tiny clock hand on larger particles
+        if sz >= 2 then
+            local tinyAngle = math.rad(frameCount * 8 + i * 60)
+            gfx.setColor(gfx.kColorBlack)
+            gfx.setLineWidth(1)
+            gfx.drawLine(px, py, px + sz*math.cos(tinyAngle), py + sz*math.sin(tinyAngle))
+        end
     end
 
     -- Title banner
     gfx.setColor(gfx.kColorWhite)
-    gfx.fillRoundRect(40, 20 + titleBounce, 320, 70, 8)
+    gfx.fillRoundRect(60, 4 + titleBounce, 280, 42, 8)
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(3)
-    gfx.drawRoundRect(40, 20 + titleBounce, 320, 70, 8)
+    gfx.drawRoundRect(60, 4 + titleBounce, 280, 42, 8)
 
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
     gfx.setFont(gfx.getSystemFont(gfx.font.kVariantBold))
-    gfx.drawTextAligned("TORCHY'S WORLD", CENTER_X, 32 + titleBounce, kTextAlignment.center)
+    gfx.drawTextAligned("TORCHY'S WORLD", CENTER_X, 9 + titleBounce, kTextAlignment.center)
     gfx.setFont(gfx.getSystemFont())
-    gfx.drawTextAligned("vs. The Time Wizard!", CENTER_X, 58 + titleBounce, kTextAlignment.center)
+    gfx.drawTextAligned("vs. The Time Wizard!", CENTER_X, 28 + titleBounce, kTextAlignment.center)
 
-    -- Mini Time Wizard at center
-    drawTimeWizard(CENTER_X, 130, titleFlameFrame, 1, 0)
-
-    -- Mini matchstick orbiting
-    local pr = 35
-    local sr = math.rad(titleSkaterAngle)
-    local sx, sy = CENTER_X + pr*math.cos(sr), 130 + pr*math.sin(sr)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.setLineWidth(1)
-    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
-    gfx.drawCircleAtPoint(CENTER_X, 130, pr)
-
-    local ox, oy = math.cos(sr), math.sin(sr)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.setLineWidth(2)
-    gfx.drawLine(sx, sy, sx + ox*8, sy + oy*8)
-    gfx.fillCircleAtPoint(sx + ox*10, sy + oy*10, 3)
-    local f = math.sin(titleFlameFrame * 0.4) * 1.5
-    gfx.fillCircleAtPoint(sx + ox*(13+f), sy + oy*(13+f), 4)
-    gfx.setColor(gfx.kColorWhite)
-    gfx.fillCircleAtPoint(sx + ox*(13+f), sy + oy*(13+f), 2)
+    -- BIG Time Wizard in center of menu
+    drawTimeWizardBig(CENTER_X, 120, titleFlameFrame)
 
     titleBounce = titleBounce + titleDir * 0.3
-    if titleBounce > 4 or titleBounce < -4 then titleDir = -titleDir end
+    if titleBounce > 3 or titleBounce < -3 then titleDir = -titleDir end
     titleSkaterAngle = (titleSkaterAngle + 3) % 360
 end
 
