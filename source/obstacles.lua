@@ -1,4 +1,4 @@
--- Obstacles module for Torchy's World
+-- Obstacles module for Cronobreak
 -- Enemy minions approach from the Time Wizard at center
 -- Standing minions (still), flying minions (orbit), platform gaps
 -- Ammo crates and bubbles spawn as power-ups
@@ -126,21 +126,54 @@ end
 -- ============================================================
 
 function ObstacleManager:beginPlatformTransition()
-    local numGaps = math.min(5, 1 + math.floor(self.difficultyLevel / 2))
+    local numGaps = math.min(4, 1 + math.floor(self.difficultyLevel / 2))
     local numSegments = 8
+    local minConsecutiveSolid = 2  -- at least 90 degrees (2 segments) of solid platform
+
     local newSegments = {}
     for i = 1, numSegments do newSegments[i] = true end
 
     local gapsCreated = 0
     local attempts = 0
-    while gapsCreated < numGaps and attempts < 20 do
+    while gapsCreated < numGaps and attempts < 30 do
         local idx = math.random(1, numSegments)
         if newSegments[idx] then
+            -- Temporarily remove this segment
+            newSegments[idx] = false
+
+            -- Check: does every gap neighbor at least one solid segment,
+            -- AND is there a run of at least minConsecutiveSolid solid segments?
+            local valid = true
+
+            -- Check neighbor rule
             local prevIdx = ((idx - 2) % numSegments) + 1
             local nextIdx = (idx % numSegments) + 1
-            if newSegments[prevIdx] or newSegments[nextIdx] then
-                newSegments[idx] = false
+            if not newSegments[prevIdx] and not newSegments[nextIdx] then
+                valid = false
+            end
+
+            -- Check minimum consecutive solid run exists
+            if valid then
+                local maxRun = 0
+                for start = 1, numSegments do
+                    local run = 0
+                    for offset = 0, numSegments - 1 do
+                        local si = ((start - 1 + offset) % numSegments) + 1
+                        if newSegments[si] then
+                            run = run + 1
+                            if run > maxRun then maxRun = run end
+                        else
+                            break
+                        end
+                    end
+                end
+                if maxRun < minConsecutiveSolid then valid = false end
+            end
+
+            if valid then
                 gapsCreated = gapsCreated + 1
+            else
+                newSegments[idx] = true  -- revert
             end
         end
         attempts = attempts + 1

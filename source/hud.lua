@@ -1,4 +1,4 @@
--- HUD module for Torchy's World
+-- HUD module for Cronobreak
 -- Displays score, speed, distance, ammo count, and other game info
 
 local gfx <const> = playdate.graphics

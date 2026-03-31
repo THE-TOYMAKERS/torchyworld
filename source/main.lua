@@ -1,4 +1,4 @@
--- Torchy's World
+-- Cronobreak
 -- A Smash Hit-style game for Playdate
 -- Crank=Rotate, A=Jump, B=Shoot, D-pad=Slow-motion
 
@@ -574,7 +574,7 @@ local function drawMenuBackground()
 
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
     gfx.setFont(gfx.getSystemFont(gfx.font.kVariantBold))
-    gfx.drawTextAligned("TORCHY'S WORLD", CENTER_X, 9 + titleBounce, kTextAlignment.center)
+    gfx.drawTextAligned("CRONOBREAK", CENTER_X, 9 + titleBounce, kTextAlignment.center)
     gfx.setFont(gfx.getSystemFont())
     gfx.drawTextAligned("vs. The Time Wizard!", CENTER_X, 28 + titleBounce, kTextAlignment.center)
 

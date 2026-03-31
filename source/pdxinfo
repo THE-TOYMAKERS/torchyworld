@@ -1,7 +1,7 @@
-name=Torchy's World
+name=Cronobreak
 author=THE TOYMAKERS
 description=A high-speed infinite runner with a twist! Use the crank to rotate 360 degrees and dodge obstacles on your skateboard.
-bundleID=com.thetoymakers.torchysworld
+bundleID=com.thetoymakers.cronobreak
 version=1.0.0
 buildNumber=1
 imagePath=images/launcher
