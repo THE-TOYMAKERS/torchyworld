@@ -32,7 +32,7 @@ function HUD:showHitCombo(hits, totalScore)
     end
 end
 
-function HUD:draw(score, highScore, gameSpeed, distance, ammo, maxAmmo)
+function HUD:draw(score, highScore, gameSpeed, distance, ammo, maxAmmo, slowMoActive)
     local boldFont = gfx.getSystemFont(gfx.font.kVariantBold)
     local normalFont = gfx.getSystemFont()
 

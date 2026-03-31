@@ -1,6 +1,7 @@
 -- Obstacles module for Torchy's World
--- Three challenges: black square obstacles (still), black triangle obstacles (orbit), platform gaps
--- All obstacles approach from center. Bubbles spawn as shield power-ups.
+-- Enemy minions approach from the Time Wizard at center
+-- Standing minions (still), flying minions (orbit), platform gaps
+-- Ammo crates and bubbles spawn as power-ups
 
 local gfx <const> = playdate.graphics
 
@@ -8,7 +9,7 @@ class('ObstacleManager').extends()
 
 -- Constants
 local PLATFORM_ARC = 45
-local OBSTACLE_TYPES = {"square", "triangle"}
+local OBSTACLE_TYPES = {"minion_stand", "minion_fly"}
 local SPAWN_DISTANCE = 200
 
 -- Warning/fade timing
@@ -16,19 +17,20 @@ local WARNING_BLINK_FRAMES = 60
 local BLINK_RATE = 6
 local FADE_STEPS = 10
 
--- Incoming obstacle
+-- Incoming
 local INCOMING_SPEED_BASE = 0.8
 local INCOMING_SPAWN_RATE = 100
 
--- Triangle orbit speed on the ring
-local TRIANGLE_ORBIT_SPEED = 1.5
+-- Flying minion orbit speed
+local FLY_ORBIT_SPEED = 1.5
 
--- How long obstacles stay on the ring before fading out (in frames)
-local OBSTACLE_LIFETIME = 120  -- ~4 seconds at 30fps
+-- Obstacle lifetime on ring
+local OBSTACLE_LIFETIME = 120
 local OBSTACLE_FADE_FRAMES = 15
 
--- Bubble spawn
-local BUBBLE_SPAWN_CHANCE = 0.08  -- Per obstacle spawn cycle
+-- Power-up spawn chances (per spawn cycle)
+local BUBBLE_SPAWN_CHANCE = 0.06
+local AMMO_CRATE_SPAWN_CHANCE = 0.12
 
 function ObstacleManager:init()
     ObstacleManager.super.init(self)
@@ -38,12 +40,12 @@ function ObstacleManager:init()
     self.lastSpawnDistance = 0
     self.difficultyLevel = 1
 
-    -- Incoming obstacles and bubbles (approach from center)
     self.incomingObstacles = {}
     self.incomingSpawnTimer = 0
-
-    -- Destruction effects
     self.breakEffects = {}
+
+    -- Track wizard anger for main.lua to read
+    self.wizardAngerTimer = 0
 
     self:initStartingPlatforms()
 end
@@ -72,7 +74,6 @@ function ObstacleManager:update(gameSpeed, distance)
         self.difficultyLevel = 10
     end
 
-    -- Reconfigure platforms at intervals
     if distance - self.lastSpawnDistance > SPAWN_DISTANCE / (1 + self.difficultyLevel * 0.1) then
         self:beginPlatformTransition()
         self.lastSpawnDistance = distance
@@ -80,35 +81,40 @@ function ObstacleManager:update(gameSpeed, distance)
 
     self:updatePlatformTransitions()
 
-    -- Spawn incoming obstacles from center
     self.incomingSpawnTimer = self.incomingSpawnTimer + gameSpeed
     local spawnRate = math.max(40, INCOMING_SPAWN_RATE - self.difficultyLevel * 10)
     if self.incomingSpawnTimer >= spawnRate then
         self.incomingSpawnTimer = 0
-        self:spawnIncomingObstacle()
+        self:spawnIncoming()
     end
 
     self:updateIncomingObstacles(gameSpeed)
 
-    -- Update landed track obstacles (movement + lifetime decay)
+    -- Update landed obstacles
     for i = #self.obstacles, 1, -1 do
         local obs = self.obstacles[i]
         if obs.active then
-            -- Triangle orbiting
-            if obs.type == "triangle" and obs.orbiting then
+            if obs.type == "minion_fly" and obs.orbiting then
                 obs.angle = (obs.angle + obs.orbitSpeed * gameSpeed) % 360
             end
-
-            -- Lifetime countdown (not for bubbles - they stay until collected)
-            if obs.type ~= "bubble" then
+            -- Lifetime decay for enemies only
+            if obs.lifetime then
                 obs.lifetime = obs.lifetime - gameSpeed
                 if obs.lifetime <= 0 then
-                    -- Fade out and remove
                     obs.active = false
                     table.remove(self.obstacles, i)
                 end
             end
+            -- Ammo crate bob
+            if obs.type == "ammo_crate" and obs.bobPhase then
+                obs.bobPhase = obs.bobPhase + 0.1
+            end
         end
+    end
+
+    -- Wizard anger decay
+    if self.wizardAngerTimer > 0 then
+        self.wizardAngerTimer = self.wizardAngerTimer - 1
     end
 
     self:updateBreakEffects()
@@ -116,17 +122,14 @@ function ObstacleManager:update(gameSpeed, distance)
 end
 
 -- ============================================================
--- PLATFORM TRANSITION WITH BLINKING WARNING
+-- PLATFORM TRANSITION
 -- ============================================================
 
 function ObstacleManager:beginPlatformTransition()
     local numGaps = math.min(5, 1 + math.floor(self.difficultyLevel / 2))
     local numSegments = 8
     local newSegments = {}
-
-    for i = 1, numSegments do
-        newSegments[i] = true
-    end
+    for i = 1, numSegments do newSegments[i] = true end
 
     local gapsCreated = 0
     local attempts = 0
@@ -144,9 +147,7 @@ function ObstacleManager:beginPlatformTransition()
     end
 
     local oldSegments = {}
-    for i = 1, numSegments do
-        oldSegments[i] = false
-    end
+    for i = 1, numSegments do oldSegments[i] = false end
     for _, plat in ipairs(self.platforms) do
         if plat.active and (plat.state == "solid" or plat.state == "fading_in" or plat.state == "warning_in") then
             local segIdx = math.floor(plat.startAngle / 45) + 1
@@ -158,107 +159,73 @@ function ObstacleManager:beginPlatformTransition()
 
     local newPlatforms = {}
     for i = 1, numSegments do
-        local startAngle = (i - 1) * 45
-        local endAngle = (i - 1) * 45 + PLATFORM_ARC
-
+        local sa = (i - 1) * 45
+        local ea = sa + PLATFORM_ARC
         if newSegments[i] and oldSegments[i] then
-            table.insert(newPlatforms, {
-                startAngle = startAngle,
-                endAngle = endAngle,
-                active = true,
-                state = "solid",
-                blinkTimer = 0,
-                opacity = 1.0
-            })
+            table.insert(newPlatforms, {startAngle=sa, endAngle=ea, active=true, state="solid", blinkTimer=0, opacity=1.0})
         elseif newSegments[i] and not oldSegments[i] then
-            table.insert(newPlatforms, {
-                startAngle = startAngle,
-                endAngle = endAngle,
-                active = true,
-                state = "warning_in",
-                blinkTimer = 0,
-                opacity = 0.0
-            })
+            table.insert(newPlatforms, {startAngle=sa, endAngle=ea, active=true, state="warning_in", blinkTimer=0, opacity=0.0})
         elseif not newSegments[i] and oldSegments[i] then
-            table.insert(newPlatforms, {
-                startAngle = startAngle,
-                endAngle = endAngle,
-                active = true,
-                state = "warning_out",
-                blinkTimer = 0,
-                opacity = 1.0
-            })
+            table.insert(newPlatforms, {startAngle=sa, endAngle=ea, active=true, state="warning_out", blinkTimer=0, opacity=1.0})
         end
     end
-
     self.platforms = newPlatforms
 end
 
 function ObstacleManager:updatePlatformTransitions()
     for i = #self.platforms, 1, -1 do
-        local plat = self.platforms[i]
-
-        if plat.state == "warning_in" then
-            plat.blinkTimer = plat.blinkTimer + 1
-            if plat.blinkTimer >= WARNING_BLINK_FRAMES then
-                plat.state = "fading_in"
-                plat.opacity = 0.0
-            end
-        elseif plat.state == "fading_in" then
-            plat.opacity = math.min(1.0, plat.opacity + 1.0 / FADE_STEPS)
-            if plat.opacity >= 1.0 then
-                plat.state = "solid"
-            end
-        elseif plat.state == "warning_out" then
-            plat.blinkTimer = plat.blinkTimer + 1
-            if plat.blinkTimer >= WARNING_BLINK_FRAMES then
-                plat.state = "fading_out"
-            end
-        elseif plat.state == "fading_out" then
-            plat.opacity = math.max(0.0, plat.opacity - 1.0 / FADE_STEPS)
-            if plat.opacity <= 0 then
-                plat.active = false
-                table.remove(self.platforms, i)
-            end
+        local p = self.platforms[i]
+        if p.state == "warning_in" then
+            p.blinkTimer = p.blinkTimer + 1
+            if p.blinkTimer >= WARNING_BLINK_FRAMES then p.state = "fading_in"; p.opacity = 0.0 end
+        elseif p.state == "fading_in" then
+            p.opacity = math.min(1.0, p.opacity + 1.0/FADE_STEPS)
+            if p.opacity >= 1.0 then p.state = "solid" end
+        elseif p.state == "warning_out" then
+            p.blinkTimer = p.blinkTimer + 1
+            if p.blinkTimer >= WARNING_BLINK_FRAMES then p.state = "fading_out" end
+        elseif p.state == "fading_out" then
+            p.opacity = math.max(0.0, p.opacity - 1.0/FADE_STEPS)
+            if p.opacity <= 0 then p.active = false; table.remove(self.platforms, i) end
         end
     end
 end
 
 -- ============================================================
--- INCOMING OBSTACLES & BUBBLES (ALL FROM CENTER)
+-- SPAWNING FROM CENTER
 -- ============================================================
 
-function ObstacleManager:spawnIncomingObstacle()
+function ObstacleManager:spawnIncoming()
     local angle = math.random(0, 359)
+    local roll = math.random()
 
-    -- Small chance to spawn a bubble power-up instead
-    if math.random() < BUBBLE_SPAWN_CHANCE then
+    if roll < AMMO_CRATE_SPAWN_CHANCE then
+        -- Ammo crate power-up
         table.insert(self.incomingObstacles, {
-            angle = angle,
-            radius = 10,
-            targetRadius = 85,
+            angle = angle, radius = 10, targetRadius = 85,
             speed = INCOMING_SPEED_BASE + self.difficultyLevel * 0.05,
-            type = "bubble",
-            active = true,
-            size = 10,
-            hitPoints = 1,
-            blinkTimer = 0
+            type = "ammo_crate", active = true, size = 7,
+            hitPoints = 1, blinkTimer = 0
         })
-        return
+    elseif roll < AMMO_CRATE_SPAWN_CHANCE + BUBBLE_SPAWN_CHANCE then
+        -- Bubble shield
+        table.insert(self.incomingObstacles, {
+            angle = angle, radius = 10, targetRadius = 85,
+            speed = INCOMING_SPEED_BASE + self.difficultyLevel * 0.05,
+            type = "bubble", active = true, size = 10,
+            hitPoints = 1, blinkTimer = 0
+        })
+    else
+        -- Enemy minion
+        local obsType = OBSTACLE_TYPES[math.random(1, #OBSTACLE_TYPES)]
+        table.insert(self.incomingObstacles, {
+            angle = angle, radius = 10, targetRadius = 85,
+            speed = INCOMING_SPEED_BASE + self.difficultyLevel * 0.1,
+            type = obsType, active = true,
+            size = self:getObstacleSize(obsType),
+            hitPoints = 1, blinkTimer = 0
+        })
     end
-
-    local obsType = OBSTACLE_TYPES[math.random(1, #OBSTACLE_TYPES)]
-    table.insert(self.incomingObstacles, {
-        angle = angle,
-        radius = 10,
-        targetRadius = 85,
-        speed = INCOMING_SPEED_BASE + self.difficultyLevel * 0.1,
-        type = obsType,
-        active = true,
-        size = self:getObstacleSize(obsType),
-        hitPoints = 1,
-        blinkTimer = 0
-    })
 end
 
 function ObstacleManager:updateIncomingObstacles(gameSpeed)
@@ -271,39 +238,26 @@ function ObstacleManager:updateIncomingObstacles(gameSpeed)
             table.remove(self.incomingObstacles, i)
 
             if obs.type == "bubble" then
-                -- Bubble lands on the ring as a collectible
                 table.insert(self.obstacles, {
-                    angle = obs.angle,
-                    type = "bubble",
-                    active = true,
-                    orbiting = false,
-                    orbitSpeed = 0,
-                    dangerous = false, -- not dangerous, it's a power-up
-                    size = obs.size,
-                    bobPhase = 0
+                    angle=obs.angle, type="bubble", active=true, orbiting=false,
+                    orbitSpeed=0, dangerous=false, size=obs.size, bobPhase=0
                 })
-            elseif obs.type == "square" then
+            elseif obs.type == "ammo_crate" then
                 table.insert(self.obstacles, {
-                    angle = obs.angle,
-                    type = "square",
-                    active = true,
-                    orbiting = false,
-                    orbitSpeed = 0,
-                    dangerous = true,
-                    size = obs.size,
-                    lifetime = OBSTACLE_LIFETIME
+                    angle=obs.angle, type="ammo_crate", active=true, orbiting=false,
+                    orbitSpeed=0, dangerous=false, size=obs.size, bobPhase=0
                 })
-            elseif obs.type == "triangle" then
+            elseif obs.type == "minion_stand" then
+                table.insert(self.obstacles, {
+                    angle=obs.angle, type="minion_stand", active=true, orbiting=false,
+                    orbitSpeed=0, dangerous=true, size=obs.size, lifetime=OBSTACLE_LIFETIME
+                })
+            elseif obs.type == "minion_fly" then
                 local dir = (math.random() < 0.5) and 1 or -1
                 table.insert(self.obstacles, {
-                    angle = obs.angle,
-                    type = "triangle",
-                    active = true,
-                    orbiting = true,
-                    orbitSpeed = TRIANGLE_ORBIT_SPEED * dir,
-                    dangerous = true,
-                    size = obs.size,
-                    lifetime = OBSTACLE_LIFETIME
+                    angle=obs.angle, type="minion_fly", active=true, orbiting=true,
+                    orbitSpeed=FLY_ORBIT_SPEED * dir, dangerous=true,
+                    size=obs.size, lifetime=OBSTACLE_LIFETIME
                 })
             end
         end
@@ -322,45 +276,39 @@ function ObstacleManager:checkProjectileCollisions(projectiles)
         local projRad = math.rad(proj.angle)
         local projX = proj.radius * math.cos(projRad)
         local projY = proj.radius * math.sin(projRad)
-
         local hitSomething = false
 
-        -- Check against incoming obstacles (not bubbles)
+        -- Incoming enemies (not power-ups)
         for oi = #self.incomingObstacles, 1, -1 do
             local obs = self.incomingObstacles[oi]
-            if obs.type ~= "bubble" then
+            if obs.type ~= "bubble" and obs.type ~= "ammo_crate" then
                 local obsRad = math.rad(obs.angle)
-                local obsX = obs.radius * math.cos(obsRad)
-                local obsY = obs.radius * math.sin(obsRad)
-
-                local dx = projX - obsX
-                local dy = projY - obsY
-                local dist = math.sqrt(dx * dx + dy * dy)
-
-                if dist < (obs.size + proj.size + 5) then
+                local dx = projX - obs.radius * math.cos(obsRad)
+                local dy = projY - obs.radius * math.sin(obsRad)
+                if math.sqrt(dx*dx + dy*dy) < (obs.size + proj.size + 5) then
                     self:createBreakEffect(obs)
                     table.remove(self.incomingObstacles, oi)
                     table.remove(projectiles, pi)
                     hits = hits + 1
                     hitSomething = true
+                    self.wizardAngerTimer = 45  -- Wizard gets angry when minions die
                     break
                 end
             end
         end
 
-        -- Check against track obstacles (not bubbles)
+        -- Track enemies
         if not hitSomething and projectiles[pi] then
             for oi = #self.obstacles, 1, -1 do
                 local obs = self.obstacles[oi]
                 if obs.active and obs.dangerous then
                     local angleDiff = math.abs(self:angleDifference(proj.angle, obs.angle))
-                    local radiusDiff = math.abs(proj.radius - 85)
-
-                    if angleDiff < 15 and radiusDiff < 15 then
+                    if angleDiff < 15 and math.abs(proj.radius - 85) < 15 then
                         self:createBreakEffect(obs)
                         table.remove(self.obstacles, oi)
                         table.remove(projectiles, pi)
                         hits = hits + 1
+                        self.wizardAngerTimer = 45
                         break
                     end
                 end
@@ -376,15 +324,11 @@ function ObstacleManager:createBreakEffect(obs)
     local cx = obs.radius or 85
     for i = 1, 12 do
         local spd = 1 + math.random() * 3
-        local angle = math.random() * math.pi * 2
+        local a = math.random() * math.pi * 2
         table.insert(self.breakEffects, {
-            x = 200 + cx * math.cos(rad),
-            y = 120 + cx * math.sin(rad),
-            vx = math.cos(angle) * spd,
-            vy = math.sin(angle) * spd,
-            life = 15 + math.random(0, 10),
-            size = math.random(2, 5),
-            type = obs.type
+            x = 200 + cx * math.cos(rad), y = 120 + cx * math.sin(rad),
+            vx = math.cos(a) * spd, vy = math.sin(a) * spd,
+            life = 15 + math.random(0, 10), size = math.random(2, 5), type = obs.type
         })
     end
 end
@@ -392,85 +336,72 @@ end
 function ObstacleManager:updateBreakEffects()
     for i = #self.breakEffects, 1, -1 do
         local e = self.breakEffects[i]
-        e.x = e.x + e.vx
-        e.y = e.y + e.vy
-        e.vy = e.vy + 0.15
-        e.life = e.life - 1
+        e.x = e.x + e.vx; e.y = e.y + e.vy
+        e.vy = e.vy + 0.15; e.life = e.life - 1
         e.size = math.max(1, e.size - 0.1)
-        if e.life <= 0 then
-            table.remove(self.breakEffects, i)
-        end
+        if e.life <= 0 then table.remove(self.breakEffects, i) end
     end
 end
 
 -- ============================================================
--- COLLISION DETECTION
+-- COLLISION / PLATFORM
 -- ============================================================
 
 function ObstacleManager:getObstacleSize(obsType)
-    if obsType == "square" then
-        return 11
-    elseif obsType == "triangle" then
-        return 12
-    elseif obsType == "bubble" then
-        return 10
+    if obsType == "minion_stand" then return 11
+    elseif obsType == "minion_fly" then return 12
+    elseif obsType == "bubble" then return 10
+    elseif obsType == "ammo_crate" then return 7
     end
     return 10
 end
 
 function ObstacleManager:cleanupOld(distance)
-    while #self.obstacles > 12 do
-        table.remove(self.obstacles, 1)
-    end
-    while #self.breakEffects > 50 do
-        table.remove(self.breakEffects, 1)
-    end
+    while #self.obstacles > 14 do table.remove(self.obstacles, 1) end
+    while #self.breakEffects > 50 do table.remove(self.breakEffects, 1) end
 end
 
 function ObstacleManager:checkCollision(player)
     local playerAngle = player:getAngle()
-    local collisionThreshold = 15
+    local threshold = 15
 
-    -- Check track obstacle collisions
     for i = #self.obstacles, 1, -1 do
         local obs = self.obstacles[i]
         if obs.active then
-            local angleDiff = math.abs(self:angleDifference(playerAngle, obs.angle))
+            local diff = math.abs(self:angleDifference(playerAngle, obs.angle))
 
             if obs.type == "bubble" then
-                -- Bubble is a power-up: collect it on touch
-                if angleDiff < 20 then
-                    obs.active = false
-                    table.remove(self.obstacles, i)
+                if diff < 20 then
+                    obs.active = false; table.remove(self.obstacles, i)
                     return true, "bubble"
                 end
+            elseif obs.type == "ammo_crate" then
+                if diff < 20 then
+                    obs.active = false; table.remove(self.obstacles, i)
+                    return true, "ammo_crate"
+                end
             elseif obs.dangerous then
-                if angleDiff < collisionThreshold and not player.isJumping then
-                    obs.active = false
-                    table.remove(self.obstacles, i)
+                if diff < threshold and not player.isJumping then
+                    obs.active = false; table.remove(self.obstacles, i)
                     return true, "obstacle"
                 end
             end
         end
     end
 
-    -- Check incoming obstacles near the orbit
     for i = #self.incomingObstacles, 1, -1 do
         local obs = self.incomingObstacles[i]
         if obs.active and obs.radius >= 75 then
-            if obs.type == "bubble" then
-                -- Can collect bubble while it's still incoming
-                local angleDiff = math.abs(self:angleDifference(playerAngle, obs.angle))
-                if angleDiff < 20 then
-                    obs.active = false
-                    table.remove(self.incomingObstacles, i)
-                    return true, "bubble"
+            local diff = math.abs(self:angleDifference(playerAngle, obs.angle))
+            if obs.type == "bubble" or obs.type == "ammo_crate" then
+                if diff < 20 then
+                    local t = obs.type
+                    obs.active = false; table.remove(self.incomingObstacles, i)
+                    return true, t
                 end
             else
-                local angleDiff = math.abs(self:angleDifference(playerAngle, obs.angle))
-                if angleDiff < collisionThreshold and not player.isJumping then
-                    obs.active = false
-                    table.remove(self.incomingObstacles, i)
+                if diff < threshold and not player.isJumping then
+                    obs.active = false; table.remove(self.incomingObstacles, i)
                     return true, "obstacle"
                 end
             end
@@ -481,67 +412,40 @@ function ObstacleManager:checkCollision(player)
 end
 
 function ObstacleManager:isOnPlatform(player)
-    local currentAngle = player:getAngle() % 360
-    local prevAngle = player:getPrevAngle() % 360
+    local cur = player:getAngle() % 360
+    local prev = player:getPrevAngle() % 360
+    local diff = cur - prev
+    if diff > 180 then diff = diff - 360 end
+    if diff < -180 then diff = diff + 360 end
 
-    -- Calculate the arc the player traveled this frame
-    local angleDiff = currentAngle - prevAngle
-    if angleDiff > 180 then angleDiff = angleDiff - 360 end
-    if angleDiff < -180 then angleDiff = angleDiff + 360 end
+    local n = math.max(1, math.ceil(math.abs(diff) / 10))
+    for step = 0, n do
+        local t = (n > 0) and (step / n) or 0
+        local ca = (prev + diff * t) % 360
+        if ca < 0 then ca = ca + 360 end
 
-    -- Check multiple sample points along the traveled arc
-    -- This prevents fast crank rotation from skipping over gaps
-    local numChecks = math.max(1, math.ceil(math.abs(angleDiff) / 10))
-
-    for step = 0, numChecks do
-        local t = (numChecks > 0) and (step / numChecks) or 0
-        local checkAngle = (prevAngle + angleDiff * t) % 360
-        if checkAngle < 0 then checkAngle = checkAngle + 360 end
-
-        local pointOnPlatform = false
+        local onPlat = false
         for _, plat in ipairs(self.platforms) do
-            local isValid = false
-            if plat.active then
-                if plat.state == "solid" then
-                    isValid = true
-                elseif plat.state == "warning_out" and plat.blinkTimer < (WARNING_BLINK_FRAMES / 2) then
-                    isValid = true
-                end
-            end
-
-            if isValid then
-                local startA = plat.startAngle % 360
-                local endA = plat.endAngle % 360
-
-                if startA <= endA then
-                    if checkAngle >= startA and checkAngle <= endA then
-                        pointOnPlatform = true
-                        break
-                    end
+            local valid = plat.active and (plat.state == "solid"
+                or (plat.state == "warning_out" and plat.blinkTimer < WARNING_BLINK_FRAMES/2))
+            if valid then
+                local sa, ea = plat.startAngle % 360, plat.endAngle % 360
+                if sa <= ea then
+                    if ca >= sa and ca <= ea then onPlat = true; break end
                 else
-                    if checkAngle >= startA or checkAngle <= endA then
-                        pointOnPlatform = true
-                        break
-                    end
+                    if ca >= sa or ca <= ea then onPlat = true; break end
                 end
             end
         end
-
-        -- If ANY point along the arc is off a platform, player is falling
-        if not pointOnPlatform then
-            return false
-        end
+        if not onPlat then return false end
     end
-
     return true
 end
 
 function ObstacleManager:angleDifference(a1, a2)
-    local diff = (a1 - a2) % 360
-    if diff > 180 then
-        diff = diff - 360
-    end
-    return diff
+    local d = (a1 - a2) % 360
+    if d > 180 then d = d - 360 end
+    return d
 end
 
 -- ============================================================
@@ -550,191 +454,175 @@ end
 
 function ObstacleManager:draw(centerX, centerY, orbitRadius)
     for _, plat in ipairs(self.platforms) do
-        if plat.active then
-            self:drawPlatformArc(centerX, centerY, orbitRadius, plat)
-        end
+        if plat.active then self:drawPlatformArc(centerX, centerY, orbitRadius, plat) end
     end
-
     for _, obs in ipairs(self.incomingObstacles) do
-        if obs.active then
-            self:drawIncomingObstacle(centerX, centerY, obs)
-        end
+        if obs.active then self:drawIncoming(centerX, centerY, obs) end
     end
-
     for _, obs in ipairs(self.obstacles) do
-        if obs.active then
-            self:drawTrackObstacle(centerX, centerY, orbitRadius, obs)
-        end
+        if obs.active then self:drawTrackObs(centerX, centerY, orbitRadius, obs) end
     end
-
     self:drawBreakEffects()
 end
 
 function ObstacleManager:drawPlatformArc(centerX, centerY, orbitRadius, plat)
     local innerR = orbitRadius - 8
     local outerR = orbitRadius + 8
-    local startRad = math.rad(plat.startAngle)
-    local endRad = math.rad(plat.endAngle)
+    local sRad = math.rad(plat.startAngle)
+    local eRad = math.rad(plat.endAngle)
     local steps = 12
 
     if plat.state == "warning_in" or plat.state == "warning_out" then
-        local blinkPhase = math.floor(plat.blinkTimer / BLINK_RATE) % 2
-        if blinkPhase == 1 then
-            return
-        end
-        gfx.setColor(gfx.kColorBlack)
-        gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+        if math.floor(plat.blinkTimer / BLINK_RATE) % 2 == 1 then return end
+        gfx.setColor(gfx.kColorBlack); gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     elseif plat.state == "fading_in" or plat.state == "fading_out" then
-        gfx.setColor(gfx.kColorBlack)
-        gfx.setDitherPattern(1.0 - plat.opacity, gfx.image.kDitherTypeBayer8x8)
+        gfx.setColor(gfx.kColorBlack); gfx.setDitherPattern(1.0 - plat.opacity, gfx.image.kDitherTypeBayer8x8)
     else
         gfx.setColor(gfx.kColorBlack)
     end
 
     gfx.setLineWidth(2)
-
-    -- Outer arc
-    local prevX, prevY
+    local px, py
     for i = 0, steps do
-        local t = startRad + (endRad - startRad) * (i / steps)
-        local x = centerX + outerR * math.cos(t)
-        local y = centerY + outerR * math.sin(t)
-        if prevX then
-            gfx.drawLine(prevX, prevY, x, y)
-        end
-        prevX, prevY = x, y
+        local t = sRad + (eRad - sRad) * (i/steps)
+        local x, y = centerX + outerR*math.cos(t), centerY + outerR*math.sin(t)
+        if px then gfx.drawLine(px, py, x, y) end
+        px, py = x, y
     end
-
-    -- Inner arc
-    prevX, prevY = nil, nil
+    px, py = nil, nil
     for i = 0, steps do
-        local t = startRad + (endRad - startRad) * (i / steps)
-        local x = centerX + innerR * math.cos(t)
-        local y = centerY + innerR * math.sin(t)
-        if prevX then
-            gfx.drawLine(prevX, prevY, x, y)
-        end
-        prevX, prevY = x, y
+        local t = sRad + (eRad - sRad) * (i/steps)
+        local x, y = centerX + innerR*math.cos(t), centerY + innerR*math.sin(t)
+        if px then gfx.drawLine(px, py, x, y) end
+        px, py = x, y
     end
+    gfx.drawLine(centerX+innerR*math.cos(sRad), centerY+innerR*math.sin(sRad),
+                  centerX+outerR*math.cos(sRad), centerY+outerR*math.sin(sRad))
+    gfx.drawLine(centerX+innerR*math.cos(eRad), centerY+innerR*math.sin(eRad),
+                  centerX+outerR*math.cos(eRad), centerY+outerR*math.sin(eRad))
 
-    -- Connect ends
-    local sx1 = centerX + innerR * math.cos(startRad)
-    local sy1 = centerY + innerR * math.sin(startRad)
-    local sx2 = centerX + outerR * math.cos(startRad)
-    local sy2 = centerY + outerR * math.sin(startRad)
-    gfx.drawLine(sx1, sy1, sx2, sy2)
-
-    local ex1 = centerX + innerR * math.cos(endRad)
-    local ey1 = centerY + innerR * math.sin(endRad)
-    local ex2 = centerX + outerR * math.cos(endRad)
-    local ey2 = centerY + outerR * math.sin(endRad)
-    gfx.drawLine(ex1, ey1, ex2, ey2)
-
-    -- Cross-hatches (only for solid platforms)
     if plat.state == "solid" then
-        gfx.setColor(gfx.kColorBlack)
-        for i = 1, steps - 1, 2 do
-            local t = startRad + (endRad - startRad) * (i / steps)
-            local ix = centerX + innerR * math.cos(t)
-            local iy = centerY + innerR * math.sin(t)
-            local ox = centerX + outerR * math.cos(t)
-            local oy = centerY + outerR * math.sin(t)
-            gfx.setLineWidth(1)
-            gfx.drawLine(ix, iy, ox, oy)
+        gfx.setColor(gfx.kColorBlack); gfx.setLineWidth(1)
+        for i = 1, steps-1, 2 do
+            local t = sRad + (eRad - sRad) * (i/steps)
+            gfx.drawLine(centerX+innerR*math.cos(t), centerY+innerR*math.sin(t),
+                          centerX+outerR*math.cos(t), centerY+outerR*math.sin(t))
         end
     end
-
     gfx.setLineWidth(1)
 end
 
-function ObstacleManager:drawIncomingObstacle(centerX, centerY, obs)
+function ObstacleManager:drawIncoming(centerX, centerY, obs)
     local rad = math.rad(obs.angle)
     local x = centerX + obs.radius * math.cos(rad)
     local y = centerY + obs.radius * math.sin(rad)
-
     local scale = 0.3 + 0.7 * (obs.radius / obs.targetRadius)
-    local drawSize = math.max(3, math.floor(obs.size * scale))
+    local ds = math.max(3, math.floor(obs.size * scale))
 
-    -- Warning line to target
+    -- Warning line
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.7, gfx.image.kDitherTypeBayer4x4)
     gfx.setLineWidth(1)
-    local targetX = centerX + obs.targetRadius * math.cos(rad)
-    local targetY = centerY + obs.targetRadius * math.sin(rad)
-    gfx.drawLine(x, y, targetX, targetY)
+    gfx.drawLine(x, y, centerX + obs.targetRadius*math.cos(rad), centerY + obs.targetRadius*math.sin(rad))
 
-    -- Draw the shape
     gfx.setColor(gfx.kColorBlack)
-    self:drawObstacleShape(x, y, obs.type, drawSize)
+    self:drawShape(x, y, obs.type, ds)
 
-    -- Blinking danger ring when close
-    if obs.radius > obs.targetRadius * 0.6 and obs.type ~= "bubble" then
+    -- Danger ring when close (enemies only)
+    if obs.radius > obs.targetRadius * 0.6 and obs.type ~= "bubble" and obs.type ~= "ammo_crate" then
         if obs.blinkTimer % 8 < 4 then
-            gfx.setColor(gfx.kColorBlack)
-            gfx.drawCircleAtPoint(x, y, drawSize + 5)
+            gfx.setColor(gfx.kColorBlack); gfx.drawCircleAtPoint(x, y, ds + 5)
         end
     end
 end
 
-function ObstacleManager:drawTrackObstacle(centerX, centerY, orbitRadius, obs)
+function ObstacleManager:drawTrackObs(centerX, centerY, orbitRadius, obs)
     local rad = math.rad(obs.angle)
     local x = centerX + orbitRadius * math.cos(rad)
     local y = centerY + orbitRadius * math.sin(rad)
 
-    -- Fade out as lifetime expires
+    -- Lifetime fade for enemies
     if obs.lifetime and obs.lifetime < OBSTACLE_FADE_FRAMES then
-        local fadeAlpha = obs.lifetime / OBSTACLE_FADE_FRAMES
-        -- Blink during final moments
-        if obs.lifetime < OBSTACLE_FADE_FRAMES / 2 then
-            if math.floor(obs.lifetime) % 4 < 2 then
-                return -- blink off
-            end
-        end
-        gfx.setColor(gfx.kColorBlack)
-        gfx.setDitherPattern(1.0 - fadeAlpha, gfx.image.kDitherTypeBayer4x4)
+        local fa = obs.lifetime / OBSTACLE_FADE_FRAMES
+        if obs.lifetime < OBSTACLE_FADE_FRAMES/2 and math.floor(obs.lifetime) % 4 < 2 then return end
+        gfx.setColor(gfx.kColorBlack); gfx.setDitherPattern(1.0 - fa, gfx.image.kDitherTypeBayer4x4)
     else
         gfx.setColor(gfx.kColorBlack)
     end
 
-    self:drawObstacleShape(x, y, obs.type, obs.size)
+    self:drawShape(x, y, obs.type, obs.size)
 
-    -- Motion trail for orbiting triangles
-    if obs.type == "triangle" and obs.orbiting then
-        local trailDir = obs.orbitSpeed > 0 and -1 or 1
-        local trailAngle = obs.angle + trailDir * 8
-        local trailRad = math.rad(trailAngle)
-        local tx = centerX + orbitRadius * math.cos(trailRad)
-        local ty = centerY + orbitRadius * math.sin(trailRad)
+    -- Flying minion trail
+    if obs.type == "minion_fly" and obs.orbiting then
+        local td = obs.orbitSpeed > 0 and -1 or 1
+        local tr = math.rad(obs.angle + td * 8)
         gfx.setDitherPattern(0.6, gfx.image.kDitherTypeBayer4x4)
-        self:drawObstacleShape(tx, ty, "triangle", math.floor(obs.size * 0.6))
+        self:drawShape(centerX + orbitRadius*math.cos(tr), centerY + orbitRadius*math.sin(tr),
+                        "minion_fly", math.floor(obs.size * 0.6))
     end
 end
 
-function ObstacleManager:drawObstacleShape(x, y, obsType, size)
+function ObstacleManager:drawShape(x, y, obsType, size)
     gfx.setColor(gfx.kColorBlack)
 
-    if obsType == "square" then
-        -- Solid black filled square
-        gfx.fillRect(x - size, y - size, size * 2, size * 2)
-    elseif obsType == "triangle" then
-        -- Solid black filled triangle
-        gfx.fillPolygon(
-            x, y - size,
-            x - size, y + size,
-            x + size, y + size
-        )
-    elseif obsType == "bubble" then
-        -- Bubble: open circle with dither pattern (clearly a power-up, not an obstacle)
+    if obsType == "minion_stand" then
+        -- Standing minion: round body, angry eyes, little legs
+        gfx.fillCircleAtPoint(x, y, size)
+        -- Eyes (angry slant)
+        gfx.setColor(gfx.kColorWhite)
+        gfx.fillCircleAtPoint(x - 3, y - 2, 3)
+        gfx.fillCircleAtPoint(x + 3, y - 2, 3)
         gfx.setColor(gfx.kColorBlack)
+        gfx.fillCircleAtPoint(x - 3, y - 1, 1.5)
+        gfx.fillCircleAtPoint(x + 3, y - 1, 1.5)
+        -- Angry eyebrows
+        gfx.setLineWidth(1)
+        gfx.drawLine(x - 5, y - 5, x - 1, y - 4)
+        gfx.drawLine(x + 5, y - 5, x + 1, y - 4)
+        -- Frown
+        gfx.drawLine(x - 3, y + 3, x, y + 5)
+        gfx.drawLine(x + 3, y + 3, x, y + 5)
+        -- Little legs
+        gfx.drawLine(x - 3, y + size, x - 4, y + size + 4)
+        gfx.drawLine(x + 3, y + size, x + 4, y + size + 4)
+
+    elseif obsType == "minion_fly" then
+        -- Flying minion: triangular body, wings, angry face
+        gfx.fillPolygon(x, y - size, x - size, y + size, x + size, y + size)
+        -- Wings
+        gfx.setLineWidth(2)
+        gfx.drawLine(x - size, y, x - size - 5, y - 3)
+        gfx.drawLine(x + size, y, x + size + 5, y - 3)
+        gfx.setLineWidth(1)
+        -- Face
+        gfx.setColor(gfx.kColorWhite)
+        gfx.fillCircleAtPoint(x - 2, y + 1, 2)
+        gfx.fillCircleAtPoint(x + 2, y + 1, 2)
+        gfx.setColor(gfx.kColorBlack)
+        gfx.fillCircleAtPoint(x - 2, y + 2, 1)
+        gfx.fillCircleAtPoint(x + 2, y + 2, 1)
+
+    elseif obsType == "bubble" then
+        -- Bubble shield power-up
         gfx.setLineWidth(2)
         gfx.drawCircleAtPoint(x, y, size)
-        -- Inner dither fill to make it look like a bubble
         gfx.setDitherPattern(0.7, gfx.image.kDitherTypeBayer4x4)
         gfx.fillCircleAtPoint(x, y, size - 2)
-        -- Highlight dot (shine on the bubble)
         gfx.setColor(gfx.kColorWhite)
-        gfx.fillCircleAtPoint(x - size * 0.3, y - size * 0.3, math.max(1, math.floor(size * 0.25)))
+        gfx.fillCircleAtPoint(x - size*0.3, y - size*0.3, math.max(1, math.floor(size*0.25)))
         gfx.setLineWidth(1)
+
+    elseif obsType == "ammo_crate" then
+        -- Ammo crate: small box, white center, clearly a pickup
+        local s = size
+        gfx.fillRect(x - s, y - s, s*2, s*2)
+        -- White center with flame icon
+        gfx.setColor(gfx.kColorWhite)
+        gfx.fillRect(x - s + 2, y - s + 2, s*2 - 4, s*2 - 4)
+        -- Small flame symbol
+        gfx.setColor(gfx.kColorBlack)
+        gfx.fillCircleAtPoint(x, y - 1, 2)
+        gfx.fillCircleAtPoint(x, y + 1, 1)
     end
 end
 
@@ -745,11 +633,7 @@ function ObstacleManager:drawBreakEffects()
         if alpha > 0.3 then
             gfx.setDitherPattern(1.0 - alpha, gfx.image.kDitherTypeBayer4x4)
             local s = math.max(1, math.floor(e.size))
-            if e.type == "square" then
-                gfx.fillRect(e.x - s/2, e.y - s/2, s, s)
-            else
-                gfx.fillPolygon(e.x, e.y - s, e.x - s, e.y + s, e.x + s, e.y + s)
-            end
+            gfx.fillCircleAtPoint(e.x, e.y, s)
         else
             gfx.fillRect(e.x, e.y, 1, 1)
         end
