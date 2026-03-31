@@ -472,41 +472,83 @@ function ObstacleManager:drawPlatformArc(centerX, centerY, orbitRadius, plat)
     local eRad = math.rad(plat.endAngle)
     local steps = 12
 
-    if plat.state == "warning_in" or plat.state == "warning_out" then
-        if math.floor(plat.blinkTimer / BLINK_RATE) % 2 == 1 then return end
-        gfx.setColor(gfx.kColorBlack); gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
-    elseif plat.state == "fading_in" or plat.state == "fading_out" then
-        gfx.setColor(gfx.kColorBlack); gfx.setDitherPattern(1.0 - plat.opacity, gfx.image.kDitherTypeBayer8x8)
+    -- Offset for "dropping" animation when disappearing
+    local dropOffset = 0
+
+    if plat.state == "warning_out" then
+        -- DISAPPEARING: rapid blink, getting faster
+        local rate = math.max(2, BLINK_RATE - math.floor(plat.blinkTimer / 15))
+        if math.floor(plat.blinkTimer / rate) % 2 == 1 then return end
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(0.4, gfx.image.kDitherTypeBayer4x4)
+    elseif plat.state == "fading_out" then
+        -- DISAPPEARING: drops away from orbit (outward) and fades
+        dropOffset = (1.0 - plat.opacity) * 12
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(1.0 - plat.opacity, gfx.image.kDitherTypeBayer8x8)
+    elseif plat.state == "warning_in" then
+        -- APPEARING: gentle pulse, grows from center of arc
+        local pulse = math.sin(plat.blinkTimer * 0.3) * 0.5 + 0.5
+        if pulse < 0.3 then return end
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(0.6, gfx.image.kDitherTypeBayer4x4)
+        -- Shrink the arc during warning (grows to full size)
+        local progress = plat.blinkTimer / WARNING_BLINK_FRAMES
+        local midAngle = (sRad + eRad) / 2
+        local halfArc = (eRad - sRad) / 2 * progress
+        sRad = midAngle - halfArc
+        eRad = midAngle + halfArc
+    elseif plat.state == "fading_in" then
+        -- APPEARING: healing sweep - fills in with shimmer
+        gfx.setColor(gfx.kColorBlack)
+        -- Shimmer dither that gets more solid
+        local shimmer = math.sin(plat.opacity * 20) * 0.15
+        gfx.setDitherPattern(math.max(0, 1.0 - plat.opacity - shimmer), gfx.image.kDitherTypeBayer4x4)
     else
         gfx.setColor(gfx.kColorBlack)
     end
+
+    -- Apply drop offset to radii
+    local dInner = innerR + dropOffset
+    local dOuter = outerR + dropOffset
 
     gfx.setLineWidth(2)
     local px, py
     for i = 0, steps do
         local t = sRad + (eRad - sRad) * (i/steps)
-        local x, y = centerX + outerR*math.cos(t), centerY + outerR*math.sin(t)
+        local x, y = centerX + dOuter*math.cos(t), centerY + dOuter*math.sin(t)
         if px then gfx.drawLine(px, py, x, y) end
         px, py = x, y
     end
     px, py = nil, nil
     for i = 0, steps do
         local t = sRad + (eRad - sRad) * (i/steps)
-        local x, y = centerX + innerR*math.cos(t), centerY + innerR*math.sin(t)
+        local x, y = centerX + dInner*math.cos(t), centerY + dInner*math.sin(t)
         if px then gfx.drawLine(px, py, x, y) end
         px, py = x, y
     end
-    gfx.drawLine(centerX+innerR*math.cos(sRad), centerY+innerR*math.sin(sRad),
-                  centerX+outerR*math.cos(sRad), centerY+outerR*math.sin(sRad))
-    gfx.drawLine(centerX+innerR*math.cos(eRad), centerY+innerR*math.sin(eRad),
-                  centerX+outerR*math.cos(eRad), centerY+outerR*math.sin(eRad))
+    gfx.drawLine(centerX+dInner*math.cos(sRad), centerY+dInner*math.sin(sRad),
+                  centerX+dOuter*math.cos(sRad), centerY+dOuter*math.sin(sRad))
+    gfx.drawLine(centerX+dInner*math.cos(eRad), centerY+dInner*math.sin(eRad),
+                  centerX+dOuter*math.cos(eRad), centerY+dOuter*math.sin(eRad))
 
     if plat.state == "solid" then
         gfx.setColor(gfx.kColorBlack); gfx.setLineWidth(1)
         for i = 1, steps-1, 2 do
             local t = sRad + (eRad - sRad) * (i/steps)
-            gfx.drawLine(centerX+innerR*math.cos(t), centerY+innerR*math.sin(t),
-                          centerX+outerR*math.cos(t), centerY+outerR*math.sin(t))
+            gfx.drawLine(centerX+dInner*math.cos(t), centerY+dInner*math.sin(t),
+                          centerX+dOuter*math.cos(t), centerY+dOuter*math.sin(t))
+        end
+    elseif plat.state == "fading_in" then
+        -- Healing sparkle marks
+        gfx.setColor(gfx.kColorBlack); gfx.setLineWidth(1)
+        local numSparkles = math.floor(plat.opacity * 4)
+        for i = 1, numSparkles do
+            local t = sRad + (eRad - sRad) * (i / (numSparkles + 1))
+            local mr = (dInner + dOuter) / 2
+            local mx, my = centerX + mr*math.cos(t), centerY + mr*math.sin(t)
+            gfx.drawLine(mx - 2, my, mx + 2, my)
+            gfx.drawLine(mx, my - 2, mx, my + 2)
         end
     end
     gfx.setLineWidth(1)
