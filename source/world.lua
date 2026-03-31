@@ -1,6 +1,5 @@
 -- World module for Torchy's World
--- Handles the scrolling background with radial particles coming AT the player
--- Creates a Smash Hit-style forward motion feel
+-- Radial particles, tunnel effect, progressive background zones
 
 local gfx <const> = playdate.graphics
 
@@ -9,148 +8,169 @@ class('World').extends()
 local SCREEN_W <const> = 400
 local SCREEN_H <const> = 240
 
+-- Zone thresholds (in distance units, /10 for meters)
+local ZONE_2 = 5000   -- 500m
+local ZONE_3 = 10000  -- 1000m
+local ZONE_4 = 15000  -- 1500m
+local ZONE_5 = 20000  -- 2000m
+
 function World:init()
     World.super.init(self)
 
-    -- Radial particles that fly outward from center (coming at the player)
     self.particles = {}
     for i = 1, 50 do
-        self:spawnParticle(true) -- randomize initial positions
+        self:spawnParticle(true)
     end
 
-    -- Ring pulse effect
     self.ringPulse = 0
     self.ringPulseDir = 1
-
-    -- Track rotation visual
     self.trackRotation = 0
-
-    -- Radial speed lines (appear at higher speeds)
     self.speedLines = {}
-
-    -- Tunnel ring effects (depth rings expanding outward)
     self.tunnelRings = {}
     self.tunnelTimer = 0
+
+    -- Zone tracking
+    self.currentZone = 1
+    self.zoneTransitionTimer = 0
+    self.zoneNameTimer = 0
+    self.zoneName = ""
 end
 
-function World:spawnParticle(randomizeRadius)
-    local angle = math.random() * 360
-    local startRadius
-    if randomizeRadius then
-        startRadius = math.random(5, 160)
-    else
-        startRadius = math.random(2, 10) -- spawn near center
-    end
+function World:getZone(distance)
+    if distance >= ZONE_5 then return 5
+    elseif distance >= ZONE_4 then return 4
+    elseif distance >= ZONE_3 then return 3
+    elseif distance >= ZONE_2 then return 2
+    else return 1 end
+end
 
+function World:spawnParticle(randomize)
+    local angle = math.random() * 360
+    local r = randomize and math.random(5, 160) or math.random(2, 10)
     table.insert(self.particles, {
-        angle = angle,
-        radius = startRadius,
+        angle = angle, radius = r,
         speed = 0.5 + math.random() * 1.5,
         size = math.random(1, 3),
-        maxRadius = 180 + math.random(0, 40) -- despawn radius
+        maxRadius = 180 + math.random(0, 40)
     })
 end
 
-function World:update(gameSpeed)
-    local centerX = SCREEN_W / 2
-    local centerY = SCREEN_H / 2
+function World:update(gameSpeed, distance)
+    distance = distance or 0
 
-    -- Update radial particles (move outward from center = "coming at" the player)
+    -- Zone detection
+    local newZone = self:getZone(distance)
+    if newZone ~= self.currentZone then
+        self.currentZone = newZone
+        self.zoneTransitionTimer = 30  -- Flash effect
+        self.zoneNameTimer = 90        -- Show zone name
+        local zoneNames = {"THE OUTSKIRTS", "MINION TERRITORY", "CLOCKWORK DEPTHS", "TIME STORM", "THE VOID"}
+        self.zoneName = zoneNames[newZone] or "UNKNOWN"
+    end
+
+    if self.zoneTransitionTimer > 0 then self.zoneTransitionTimer = self.zoneTransitionTimer - 1 end
+    if self.zoneNameTimer > 0 then self.zoneNameTimer = self.zoneNameTimer - 1 end
+
+    -- Particle count scales with zone
+    local targetParticles = 40 + self.currentZone * 10
+
+    -- Update particles
     for i = #self.particles, 1, -1 do
         local p = self.particles[i]
         p.radius = p.radius + p.speed * gameSpeed
-
-        -- Remove if past screen edge and respawn near center
         if p.radius > p.maxRadius then
             table.remove(self.particles, i)
             self:spawnParticle(false)
         end
     end
+    while #self.particles < targetParticles do self:spawnParticle(false) end
 
-    -- Ensure enough particles
-    while #self.particles < 50 do
-        self:spawnParticle(false)
-    end
+    -- Ring pulse (faster in higher zones)
+    local pulseSpeed = 0.3 + self.currentZone * 0.1
+    self.ringPulse = self.ringPulse + self.ringPulseDir * pulseSpeed
+    if self.ringPulse > 5 or self.ringPulse < -2 then self.ringPulseDir = -self.ringPulseDir end
 
-    -- Ring pulse animation
-    self.ringPulse = self.ringPulse + self.ringPulseDir * 0.3
-    if self.ringPulse > 5 or self.ringPulse < -2 then
-        self.ringPulseDir = -self.ringPulseDir
-    end
-
-    -- Track visual rotation
     self.trackRotation = (self.trackRotation + gameSpeed * 1.5) % 360
 
-    -- Generate radial speed lines at higher speeds
-    if gameSpeed > 1.5 then
-        local lineChance = math.min(0.5, (gameSpeed - 1.5) * 0.25)
+    -- Speed lines (more frequent in higher zones)
+    if gameSpeed > 1.2 then
+        local lineChance = math.min(0.6, (gameSpeed - 1.2) * 0.2 + self.currentZone * 0.05)
         if math.random() < lineChance then
-            local angle = math.random() * 360
             table.insert(self.speedLines, {
-                angle = angle,
-                radius = 20 + math.random() * 30,
+                angle = math.random() * 360,
+                radius = 15 + math.random() * 25,
                 length = 15 + math.random() * 30,
                 speed = gameSpeed * (4 + math.random() * 4)
             })
         end
     end
 
-    -- Update speed lines (radial, moving outward)
     for i = #self.speedLines, 1, -1 do
-        local line = self.speedLines[i]
-        line.radius = line.radius + line.speed
-        if line.radius > 200 then
-            table.remove(self.speedLines, i)
-        end
+        self.speedLines[i].radius = self.speedLines[i].radius + self.speedLines[i].speed
+        if self.speedLines[i].radius > 200 then table.remove(self.speedLines, i) end
     end
 
-    -- Tunnel ring effect (concentric rings expanding outward)
+    -- Tunnel rings (spawn rate varies by zone)
+    local tunnelRate = math.max(5, 15 - self.currentZone * 2)
     self.tunnelTimer = self.tunnelTimer + gameSpeed
-    if self.tunnelTimer > 15 then
+    if self.tunnelTimer > tunnelRate then
         self.tunnelTimer = 0
         table.insert(self.tunnelRings, {
             radius = 5,
             speed = 1.5 + gameSpeed * 0.5,
             opacity = 0.8
         })
+        -- Zone 4+: double rings
+        if self.currentZone >= 4 then
+            table.insert(self.tunnelRings, {
+                radius = 8, speed = 1.2 + gameSpeed * 0.4, opacity = 0.5
+            })
+        end
     end
 
     for i = #self.tunnelRings, 1, -1 do
         local ring = self.tunnelRings[i]
         ring.radius = ring.radius + ring.speed
         ring.opacity = ring.opacity - 0.008
-        if ring.opacity <= 0 or ring.radius > 200 then
-            table.remove(self.tunnelRings, i)
-        end
+        if ring.opacity <= 0 or ring.radius > 200 then table.remove(self.tunnelRings, i) end
     end
 end
 
 function World:draw(centerX, centerY, gameSpeed)
-    -- Draw tunnel rings (depth effect, like flying through a tunnel)
+    local zone = self.currentZone
+
+    -- Zone transition flash
+    if self.zoneTransitionTimer > 0 then
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(self.zoneTransitionTimer / 30 * 0.4, gfx.image.kDitherTypeBayer8x8)
+        gfx.fillRect(0, 0, SCREEN_W, SCREEN_H)
+    end
+
+    -- Tunnel rings
     for _, ring in ipairs(self.tunnelRings) do
         if ring.opacity > 0.1 then
             gfx.setColor(gfx.kColorBlack)
-            gfx.setDitherPattern(1.0 - ring.opacity * 0.3, gfx.image.kDitherTypeBayer8x8)
+            local ditherBase = zone >= 3 and 0.4 or 0.3
+            gfx.setDitherPattern(1.0 - ring.opacity * ditherBase, gfx.image.kDitherTypeBayer8x8)
             gfx.setLineWidth(1)
             gfx.drawCircleAtPoint(centerX, centerY, ring.radius)
         end
     end
 
-    -- Draw radial particles (dots flying outward from center)
+    -- Radial particles
     gfx.setColor(gfx.kColorBlack)
     for _, p in ipairs(self.particles) do
         local rad = math.rad(p.angle)
         local px = centerX + p.radius * math.cos(rad)
         local py = centerY + p.radius * math.sin(rad)
 
-        -- Only draw if on screen
         if px > -5 and px < SCREEN_W + 5 and py > -5 and py < SCREEN_H + 5 then
-            -- Particles grow slightly as they get further out (perspective)
             local drawSize = math.max(1, math.floor(p.size * (0.5 + p.radius / 200)))
+            -- Zone 5: particles are larger
+            if zone >= 5 then drawSize = drawSize + 1 end
 
-            -- Farther particles are more opaque (closer to viewer)
-            local ditherAmount = math.max(0.2, 1.0 - (p.radius / p.maxRadius))
-            gfx.setDitherPattern(1.0 - ditherAmount, gfx.image.kDitherTypeBayer4x4)
+            local dither = math.max(0.2, 1.0 - (p.radius / p.maxRadius))
+            gfx.setDitherPattern(1.0 - dither, gfx.image.kDitherTypeBayer4x4)
 
             if drawSize <= 1 then
                 gfx.drawPixel(px, py)
@@ -160,52 +180,55 @@ function World:draw(centerX, centerY, gameSpeed)
         end
     end
 
-    -- Draw radial speed lines
+    -- Speed lines
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(1)
     for _, line in ipairs(self.speedLines) do
         local rad = math.rad(line.angle)
-        local r1 = line.radius
-        local r2 = line.radius + line.length
-        local x1 = centerX + r1 * math.cos(rad)
-        local y1 = centerY + r1 * math.sin(rad)
-        local x2 = centerX + r2 * math.cos(rad)
-        local y2 = centerY + r2 * math.sin(rad)
-        gfx.drawLine(x1, y1, x2, y2)
+        local r1, r2 = line.radius, line.radius + line.length
+        gfx.drawLine(centerX + r1*math.cos(rad), centerY + r1*math.sin(rad),
+                      centerX + r2*math.cos(rad), centerY + r2*math.sin(rad))
     end
 
-    -- Orbit ring decorations (tick marks around the orbit)
-    local orbitRadius = 85
+    -- Orbit ring decorations
+    local orbitR = 85
     local numTicks = 24
     for i = 0, numTicks - 1 do
-        local tickAngle = math.rad(i * (360 / numTicks) + self.trackRotation)
-        local innerR = orbitRadius - 4
-        local outerR = orbitRadius + 4
-
-        if i % 3 == 0 then
-            innerR = orbitRadius - 6
-            outerR = orbitRadius + 6
-        end
-
-        local x1 = centerX + innerR * math.cos(tickAngle)
-        local y1 = centerY + innerR * math.sin(tickAngle)
-        local x2 = centerX + outerR * math.cos(tickAngle)
-        local y2 = centerY + outerR * math.sin(tickAngle)
-
-        gfx.setColor(gfx.kColorBlack)
-        gfx.setLineWidth(1)
-        gfx.drawLine(x1, y1, x2, y2)
+        local ta = math.rad(i * (360/numTicks) + self.trackRotation)
+        local iR = (i % 3 == 0) and (orbitR - 6) or (orbitR - 4)
+        local oR = (i % 3 == 0) and (orbitR + 6) or (orbitR + 4)
+        gfx.setColor(gfx.kColorBlack); gfx.setLineWidth(1)
+        gfx.drawLine(centerX + iR*math.cos(ta), centerY + iR*math.sin(ta),
+                      centerX + oR*math.cos(ta), centerY + oR*math.sin(ta))
     end
 
     -- Pulsing outer ring
-    local pulseRadius = orbitRadius + 20 + self.ringPulse
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.75, gfx.image.kDitherTypeBayer4x4)
-    gfx.setLineWidth(1)
-    gfx.drawCircleAtPoint(centerX, centerY, pulseRadius)
+    gfx.drawCircleAtPoint(centerX, centerY, orbitR + 20 + self.ringPulse)
 
-    -- Inner decorative ring
-    gfx.setColor(gfx.kColorBlack)
+    -- Inner ring (zone 3+: double inner ring)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
-    gfx.drawCircleAtPoint(centerX, centerY, orbitRadius - 15)
+    gfx.drawCircleAtPoint(centerX, centerY, orbitR - 15)
+    if zone >= 3 then
+        gfx.setDitherPattern(0.6, gfx.image.kDitherTypeBayer4x4)
+        gfx.drawCircleAtPoint(centerX, centerY, orbitR - 25)
+    end
+
+    -- Zone name display
+    if self.zoneNameTimer > 0 then
+        local alpha = math.min(1.0, self.zoneNameTimer / 30)
+        if alpha > 0.2 then
+            local boldFont = gfx.getSystemFont(gfx.font.kVariantBold)
+            gfx.setFont(boldFont)
+            gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
+
+            local tw = boldFont:getTextWidth(self.zoneName)
+            gfx.setColor(gfx.kColorWhite)
+            gfx.fillRoundRect(centerX - tw/2 - 12, 42, tw + 24, 22, 4)
+            gfx.setColor(gfx.kColorBlack)
+            gfx.drawRoundRect(centerX - tw/2 - 12, 42, tw + 24, 22, 4)
+            gfx.drawTextAligned(self.zoneName, centerX, 45, kTextAlignment.center)
+        end
+    end
 end

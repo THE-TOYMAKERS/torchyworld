@@ -1,35 +1,35 @@
 -- Player module for Torchy's World
 -- Matchstick on fire riding a skateboard, orbiting the center
--- Smash Hit style: player can shoot fireballs to break obstacles
+-- Shoot fireballs (B), Jump (A), Slow-motion (D-pad)
 
 local gfx <const> = playdate.graphics
 
 class('Player').extends()
 
 -- Constants
-local ORBIT_RADIUS = 85        -- Distance from center of screen
-local JUMP_VELOCITY = -8       -- Initial jump velocity
-local GRAVITY = 0.5            -- Gravity pulling player back
-local CRANK_SENSITIVITY = 1.0  -- How responsive the crank is
-local TRAIL_LENGTH = 8         -- Number of trail dots
-local MAX_AMMO = 20            -- Maximum fireballs
-local START_AMMO = 10          -- Starting fireballs
-local PROJECTILE_SPEED = 4    -- How fast fireballs travel inward
+local ORBIT_RADIUS = 85
+local JUMP_VELOCITY = -8
+local GRAVITY = 0.5
+local CRANK_SENSITIVITY = 1.0
+local TRAIL_LENGTH = 8
+local MAX_AMMO = 20
+local START_AMMO = 10
+local PROJECTILE_SPEED = 4
+local SLOWMO_AMMO_COST_RATE = 10  -- Drain 1 ammo every N frames in slow-mo
 
 function Player:init(centerX, centerY)
     Player.super.init(self)
 
     self.centerX = centerX
     self.centerY = centerY
-    self.angle = 270              -- Start at bottom (270 degrees)
-    self.prevAngle = 270          -- Previous frame angle (for gap detection)
+    self.angle = 270
+    self.prevAngle = 270
     self.orbitRadius = ORBIT_RADIUS
 
-    -- Position on the orbit
     self.x = 0
     self.y = 0
 
-    -- Jump mechanics
+    -- Jump
     self.isJumping = false
     self.jumpVelocity = 0
     self.jumpOffset = 0
@@ -41,19 +41,21 @@ function Player:init(centerX, centerY)
     self.size = 14
     self.trail = {}
     self.sparks = {}
-
-    -- Flame animation
     self.flameFrame = 0
 
-    -- Shooting (Smash Hit style)
+    -- Shooting
     self.ammo = START_AMMO
     self.maxAmmo = MAX_AMMO
     self.projectiles = {}
     self.shootCooldown = 0
 
-    -- Bubble shield (absorbs one hit)
+    -- Bubble shield
     self.hasShield = false
-    self.shieldTimer = 0  -- Animation timer for shield visual
+    self.shieldTimer = 0
+
+    -- Slow-motion (D-pad)
+    self.slowMotionActive = false
+    self.slowMotionDrainTimer = 0
 
     self:updatePosition()
 end
@@ -73,16 +75,13 @@ function Player:updatePosition()
 end
 
 function Player:update(crankChange, gameSpeed)
-    -- Store previous angle BEFORE updating (for gap detection)
     self.prevAngle = self.angle
-
     self:updateAngle(crankChange)
 
-    -- Handle jumping
+    -- Jump
     if self.isJumping then
         self.jumpVelocity = self.jumpVelocity + GRAVITY
         self.jumpOffset = self.jumpOffset + self.jumpVelocity
-
         if self.jumpOffset >= 0 then
             self.jumpOffset = 0
             self.jumpVelocity = 0
@@ -91,14 +90,13 @@ function Player:update(crankChange, gameSpeed)
         end
     end
 
-    -- Jump input (A button)
     if playdate.buttonJustPressed(playdate.kButtonA) and not self.isJumping then
         self.isJumping = true
         self.jumpVelocity = JUMP_VELOCITY
         self:createSparks(3)
     end
 
-    -- Shoot input (B button) - Smash Hit style
+    -- Shoot (B button)
     if self.shootCooldown > 0 then
         self.shootCooldown = self.shootCooldown - 1
     end
@@ -107,26 +105,39 @@ function Player:update(crankChange, gameSpeed)
         self:shoot()
     end
 
+    -- Slow-motion (any D-pad direction held)
+    local dpadHeld = playdate.buttonIsPressed(playdate.kButtonUp)
+        or playdate.buttonIsPressed(playdate.kButtonDown)
+        or playdate.buttonIsPressed(playdate.kButtonLeft)
+        or playdate.buttonIsPressed(playdate.kButtonRight)
+
+    if dpadHeld and self.ammo > 0 then
+        self.slowMotionActive = true
+        self.slowMotionDrainTimer = self.slowMotionDrainTimer + 1
+        if self.slowMotionDrainTimer >= SLOWMO_AMMO_COST_RATE then
+            self.slowMotionDrainTimer = 0
+            self.ammo = self.ammo - 1
+        end
+    else
+        self.slowMotionActive = false
+        self.slowMotionDrainTimer = 0
+    end
+
     self:updatePosition()
 
-    -- Trail effect
+    -- Trail
     table.insert(self.trail, 1, {x = self.x, y = self.y})
     if #self.trail > TRAIL_LENGTH then
         table.remove(self.trail)
     end
 
-    -- Flame animation
     self.flameFrame = self.flameFrame + 1
 
-    -- Shield animation
     if self.hasShield then
         self.shieldTimer = self.shieldTimer + 1
     end
 
-    -- Update sparks
     self:updateSparks()
-
-    -- Update projectiles
     self:updateProjectiles()
 end
 
@@ -134,14 +145,11 @@ function Player:shoot()
     self.ammo = self.ammo - 1
     self.shootCooldown = 8
 
-    -- Fire a projectile inward from player position toward center
-    local rad = math.rad(self.angle)
-    local startRadius = self.orbitRadius + self.jumpOffset
     table.insert(self.projectiles, {
         angle = self.angle,
-        radius = startRadius,
+        radius = self.orbitRadius + self.jumpOffset,
         speed = PROJECTILE_SPEED,
-        life = 60, -- frames before expiry
+        life = 60,
         size = 4,
         trail = {}
     })
@@ -154,7 +162,6 @@ function Player:updateProjectiles()
         p.radius = p.radius - p.speed
         p.life = p.life - 1
 
-        -- Store trail positions
         local rad = math.rad(p.angle)
         local px = self.centerX + p.radius * math.cos(rad)
         local py = self.centerY + p.radius * math.sin(rad)
@@ -163,8 +170,7 @@ function Player:updateProjectiles()
             table.remove(p.trail)
         end
 
-        -- Remove if expired or reached center
-        if p.life <= 0 or p.radius <= 15 then
+        if p.life <= 0 or p.radius <= 20 then
             table.remove(self.projectiles, i)
         end
     end
@@ -194,14 +200,12 @@ end
 
 function Player:createSparks(count)
     for i = 1, count do
-        local spark = {
-            x = self.x,
-            y = self.y,
+        table.insert(self.sparks, {
+            x = self.x, y = self.y,
             vx = (math.random() - 0.5) * 4,
             vy = (math.random() - 0.5) * 4,
             life = math.random(5, 12)
-        }
-        table.insert(self.sparks, spark)
+        })
     end
 end
 
@@ -218,7 +222,7 @@ function Player:updateSparks()
 end
 
 function Player:draw()
-    -- Draw trail
+    -- Trail
     gfx.setColor(gfx.kColorBlack)
     for i, pos in ipairs(self.trail) do
         local alpha = 1.0 - (i / TRAIL_LENGTH)
@@ -227,46 +231,41 @@ function Player:draw()
         gfx.fillCircleAtPoint(pos.x, pos.y, trailSize)
     end
 
-    -- Draw sparks
+    -- Sparks
     gfx.setColor(gfx.kColorBlack)
     for _, s in ipairs(self.sparks) do
-        local sparkSize = math.max(1, math.floor(s.life / 3))
-        gfx.fillRect(s.x - sparkSize/2, s.y - sparkSize/2, sparkSize, sparkSize)
+        local sz = math.max(1, math.floor(s.life / 3))
+        gfx.fillRect(s.x - sz/2, s.y - sz/2, sz, sz)
     end
 
-    -- Draw projectiles (fireballs heading toward center)
+    -- Projectiles
     for _, p in ipairs(self.projectiles) do
         self:drawProjectile(p)
     end
 
-    -- Draw the matchstick character
+    -- Matchstick character
     self:drawMatchstick()
 
-    -- Draw bubble shield around player
+    -- Shield
     if self.hasShield then
         local shimmer = math.sin(self.shieldTimer * 0.15) * 2
-        local shieldRadius = 22 + shimmer
+        local sr = 22 + shimmer
         gfx.setColor(gfx.kColorBlack)
         gfx.setLineWidth(2)
-        gfx.drawCircleAtPoint(self.x, self.y, shieldRadius)
-        -- Inner dither ring for bubble effect
+        gfx.drawCircleAtPoint(self.x, self.y, sr)
         gfx.setDitherPattern(0.7, gfx.image.kDitherTypeBayer4x4)
-        gfx.drawCircleAtPoint(self.x, self.y, shieldRadius - 3)
-        -- Highlight
-        local hlAngle = self.shieldTimer * 0.1
-        local hlX = self.x + (shieldRadius - 4) * math.cos(hlAngle)
-        local hlY = self.y + (shieldRadius - 4) * math.sin(hlAngle)
+        gfx.drawCircleAtPoint(self.x, self.y, sr - 3)
+        local hlA = self.shieldTimer * 0.1
         gfx.setColor(gfx.kColorWhite)
-        gfx.fillCircleAtPoint(hlX, hlY, 2)
+        gfx.fillCircleAtPoint(self.x + (sr-4)*math.cos(hlA), self.y + (sr-4)*math.sin(hlA), 2)
         gfx.setLineWidth(1)
     end
 
-    -- Draw "falling" warning indicator
+    -- Fall warning
     if self.fallTimer > 0 and not self.isJumping then
         gfx.setColor(gfx.kColorBlack)
-        local warningSize = 4 + self.fallTimer
         if math.floor(self.fallTimer) % 2 == 0 then
-            gfx.drawCircleAtPoint(self.x, self.y, warningSize + 10)
+            gfx.drawCircleAtPoint(self.x, self.y, 4 + self.fallTimer + 10)
         end
     end
 end
@@ -276,16 +275,13 @@ function Player:drawProjectile(p)
     local px = self.centerX + p.radius * math.cos(rad)
     local py = self.centerY + p.radius * math.sin(rad)
 
-    -- Fireball trail
     for i, t in ipairs(p.trail) do
         local alpha = 1.0 - (i / 4)
-        local s = math.max(1, math.floor(p.size * alpha))
         gfx.setColor(gfx.kColorBlack)
         gfx.setDitherPattern(1.0 - alpha * 0.5, gfx.image.kDitherTypeBayer4x4)
-        gfx.fillCircleAtPoint(t.x, t.y, s)
+        gfx.fillCircleAtPoint(t.x, t.y, math.max(1, math.floor(p.size * alpha)))
     end
 
-    -- Fireball core
     gfx.setColor(gfx.kColorBlack)
     gfx.fillCircleAtPoint(px, py, p.size)
     gfx.setColor(gfx.kColorWhite)
@@ -296,105 +292,58 @@ end
 
 function Player:drawMatchstick()
     local rad = math.rad(self.angle)
-
-    -- Direction vectors
-    -- "outward" = away from center (where flame is)
     local outX = math.cos(rad)
     local outY = math.sin(rad)
-    -- "perpendicular" = along the orbit (skateboard direction)
     local perpX = -math.sin(rad)
     local perpY = math.cos(rad)
 
-    -- The player position is on the orbit. Skateboard is at the orbit,
-    -- matchstick body extends outward, flame on top (outer end)
-
-    -- === SKATEBOARD ===
-    local boardLen = 12
-    local bx1 = self.x + perpX * boardLen
-    local by1 = self.y + perpY * boardLen
-    local bx2 = self.x - perpX * boardLen
-    local by2 = self.y - perpY * boardLen
-
-    -- Board deck
+    -- Skateboard
+    local bLen = 12
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(3)
-    gfx.drawLine(bx1, by1, bx2, by2)
+    gfx.drawLine(self.x + perpX*bLen, self.y + perpY*bLen, self.x - perpX*bLen, self.y - perpY*bLen)
 
-    -- Curved kicktails
-    local tailLen = 3
     gfx.setLineWidth(2)
-    gfx.drawLine(bx1, by1, bx1 + outX * tailLen, by1 + outY * tailLen)
-    gfx.drawLine(bx2, by2, bx2 + outX * tailLen, by2 + outY * tailLen)
+    local bx1, by1 = self.x + perpX*bLen, self.y + perpY*bLen
+    local bx2, by2 = self.x - perpX*bLen, self.y - perpY*bLen
+    gfx.drawLine(bx1, by1, bx1 + outX*3, by1 + outY*3)
+    gfx.drawLine(bx2, by2, bx2 + outX*3, by2 + outY*3)
 
-    -- Wheels (4 small circles, 2 on each side)
-    local wheelInset = 3
-    local wheelOffset = -2 -- slightly toward center from board
+    -- Wheels
     for _, sign in ipairs({-1, 1}) do
-        local wxBase = self.x + perpX * (boardLen - wheelInset) * sign
-        local wyBase = self.y + perpY * (boardLen - wheelInset) * sign
-        -- Offset toward center
-        local wx = wxBase - outX * wheelOffset
-        local wy = wyBase - outY * wheelOffset
+        local wx = self.x + perpX*(bLen-3)*sign + outX*2
+        local wy = self.y + perpY*(bLen-3)*sign + outY*2
         gfx.setColor(gfx.kColorBlack)
         gfx.fillCircleAtPoint(wx, wy, 2.5)
         gfx.setColor(gfx.kColorWhite)
         gfx.fillCircleAtPoint(wx, wy, 1)
     end
 
-    -- === MATCHSTICK BODY (thin stick extending outward from skateboard) ===
-    local stickBase = 2    -- start slightly above board
-    local stickLen = 14    -- length of the stick
-    local stickStartX = self.x + outX * stickBase
-    local stickStartY = self.y + outY * stickBase
-    local stickEndX = self.x + outX * (stickBase + stickLen)
-    local stickEndY = self.y + outY * (stickBase + stickLen)
-
+    -- Stick body
+    local ssx, ssy = self.x + outX*2, self.y + outY*2
+    local sex, sey = self.x + outX*16, self.y + outY*16
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(3)
-    gfx.drawLine(stickStartX, stickStartY, stickEndX, stickEndY)
+    gfx.drawLine(ssx, ssy, sex, sey)
 
-    -- Match head (rounded bulb at the top of the stick)
-    local headX = stickEndX + outX * 2
-    local headY = stickEndY + outY * 2
+    -- Match head
+    local hx, hy = sex + outX*2, sey + outY*2
+    gfx.fillCircleAtPoint(hx, hy, 4)
+
+    -- Flame
+    local fx, fy = hx + outX*4, hy + outY*4
+    local f1 = math.sin(self.flameFrame * 0.4) * 2
+    local f2 = math.cos(self.flameFrame * 0.3) * 1.5
+    local fSize = 7 + f1
+
     gfx.setColor(gfx.kColorBlack)
-    gfx.fillCircleAtPoint(headX, headY, 4)
-
-    -- === FLAME (animated, on top of the match head) ===
-    local flameBaseX = headX + outX * 4
-    local flameBaseY = headY + outY * 4
-
-    -- Flame flickers using sin wave
-    local flicker1 = math.sin(self.flameFrame * 0.4) * 2
-    local flicker2 = math.cos(self.flameFrame * 0.3) * 1.5
-
-    -- Outer flame (larger, black)
-    local flameOuterSize = 7 + flicker1
-    gfx.setColor(gfx.kColorBlack)
-    gfx.fillCircleAtPoint(
-        flameBaseX + perpX * flicker2,
-        flameBaseY + perpY * flicker2,
-        flameOuterSize
-    )
-
-    -- Tip of flame (extends further outward)
-    local flameTipX = flameBaseX + outX * (5 + flicker1)
-    local flameTipY = flameBaseY + outY * (5 + flicker1)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.fillCircleAtPoint(flameTipX, flameTipY, 4)
-
-    -- Inner flame (white, gives the flame definition on 1-bit display)
+    gfx.fillCircleAtPoint(fx + perpX*f2, fy + perpY*f2, fSize)
+    gfx.fillCircleAtPoint(fx + outX*(5+f1), fy + outY*(5+f1), 4)
     gfx.setColor(gfx.kColorWhite)
-    gfx.fillCircleAtPoint(
-        flameBaseX + perpX * (flicker2 * 0.5),
-        flameBaseY + perpY * (flicker2 * 0.5),
-        flameOuterSize - 3
-    )
-
-    -- Flame core (small black dot in center of white for depth)
+    gfx.fillCircleAtPoint(fx + perpX*(f2*0.5), fy + perpY*(f2*0.5), fSize - 3)
     gfx.setColor(gfx.kColorBlack)
-    gfx.fillCircleAtPoint(flameBaseX, flameBaseY, 2)
+    gfx.fillCircleAtPoint(fx, fy, 2)
 
-    -- Small spark particles flying off the flame
     if self.flameFrame % 4 == 0 then
         self:createSparks(1)
     end
