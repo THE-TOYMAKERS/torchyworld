@@ -541,49 +541,170 @@ end
 -- MENU (Home Screen)
 -- ============================================================
 
+-- Draw a gear shape with given teeth count, rotating at angle
+local function drawGear(cx, cy, outerR, innerR, teeth, angle)
+    local pts = {}
+    local step = math.pi * 2 / (teeth * 4)
+    for i = 0, teeth * 4 - 1 do
+        local a = angle + i * step
+        local phase = i % 4
+        local r
+        if phase == 0 or phase == 1 then
+            r = outerR
+        else
+            r = innerR
+        end
+        pts[#pts + 1] = cx + r * math.cos(a)
+        pts[#pts + 1] = cy + r * math.sin(a)
+    end
+    gfx.fillPolygon(table.unpack(pts))
+end
+
 local function drawMenuBackground()
     gfx.clear(gfx.kColorWhite)
     titleFlameFrame = titleFlameFrame + 1
+    local f = titleFlameFrame
 
-    -- Floating clock particles in background
-    for i = 0, 11 do
-        local angle = (frameCount * 2 + i * 30) % 360
-        local radius = (frameCount * 1.5 + i * 18) % 180
-        local rad = math.rad(angle)
-        local px = CENTER_X + radius*math.cos(rad)
-        local py = CENTER_Y + radius*math.sin(rad)
+    -- === SUBTLE CIRCUIT GRID ===
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.92, gfx.image.kDitherTypeBayer8x8)
+    gfx.setLineWidth(1)
+    for x = 0, SCREEN_W, 40 do
+        gfx.drawLine(x, 0, x, SCREEN_H)
+    end
+    for y = 0, SCREEN_H, 40 do
+        gfx.drawLine(0, y, SCREEN_W, y)
+    end
+
+    -- === HORIZONTAL SCAN LINES (sweeping down) ===
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.88, gfx.image.kDitherTypeBayer4x4)
+    local scan1 = (f * 2) % (SCREEN_H + 30) - 15
+    gfx.fillRect(0, scan1, SCREEN_W, 3)
+    local scan2 = (f * 2 + 130) % (SCREEN_H + 30) - 15
+    gfx.fillRect(0, scan2, SCREEN_W, 2)
+
+    -- === FLOATING BACKGROUND GEARS ===
+    for i = 0, 5 do
+        local speed = 0.2 + i * 0.12
+        local gx = (f * speed + i * 73) % (SCREEN_W + 40) - 20
+        local gy = 15 + (i * 41) % (SCREEN_H - 30)
+        local gr = 5 + (i % 3) * 3
+        local gTeeth = 5 + (i % 3)
         gfx.setColor(gfx.kColorBlack)
-        gfx.setDitherPattern(0.75, gfx.image.kDitherTypeBayer4x4)
-        local sz = math.max(1, math.floor(radius / 90))
-        gfx.fillCircleAtPoint(px, py, sz)
-        -- Tiny clock hand on larger particles
-        if sz >= 2 then
-            local tinyAngle = math.rad(frameCount * 8 + i * 60)
+        gfx.setDitherPattern(0.78, gfx.image.kDitherTypeBayer4x4)
+        drawGear(gx, gy, gr, gr * 0.65, gTeeth, f * 0.02 * (1 + i * 0.3))
+    end
+
+    -- === ENERGY PULSE RINGS (emanate from center) ===
+    local pulseR = 10 + (f % 90) * 1.5
+    if pulseR < 140 then
+        local alpha = 0.95 - (pulseR / 140) * 0.5
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(alpha, gfx.image.kDitherTypeBayer4x4)
+        gfx.setLineWidth(1)
+        gfx.drawCircleAtPoint(CENTER_X, 125, pulseR)
+    end
+    local pulse2R = 10 + ((f + 45) % 90) * 1.5
+    if pulse2R < 140 then
+        local alpha2 = 0.95 - (pulse2R / 140) * 0.5
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(alpha2, gfx.image.kDitherTypeBayer4x4)
+        gfx.drawCircleAtPoint(CENTER_X, 125, pulse2R)
+    end
+
+    -- === TITLE LOGO PANEL ===
+    local titleY = 4 + titleBounce
+    local bf = gfx.getSystemFont(gfx.font.kVariantBold)
+    local nf = gfx.getSystemFont()
+
+    -- Panel background
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillRoundRect(42, titleY - 2, 316, 62, 6)
+    -- Outer border
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(3)
+    gfx.drawRoundRect(42, titleY - 2, 316, 62, 6)
+    -- Inner border for depth
+    gfx.setLineWidth(1)
+    gfx.drawRoundRect(46, titleY + 2, 308, 54, 4)
+
+    -- Corner gears on title panel (spinning opposite directions)
+    gfx.setColor(gfx.kColorBlack)
+    drawGear(54, titleY + 8, 7, 4.5, 6, -f * 0.04)
+    drawGear(346, titleY + 8, 7, 4.5, 6, f * 0.04)
+    drawGear(54, titleY + 52, 7, 4.5, 6, f * 0.03)
+    drawGear(346, titleY + 52, 7, 4.5, 6, -f * 0.03)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(54, titleY + 8, 2.5)
+    gfx.fillCircleAtPoint(346, titleY + 8, 2.5)
+    gfx.fillCircleAtPoint(54, titleY + 52, 2.5)
+    gfx.fillCircleAtPoint(346, titleY + 52, 2.5)
+
+    -- Decorative horizontal lines flanking title
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(1)
+    gfx.drawLine(64, titleY + 30, 95, titleY + 30)
+    gfx.drawLine(305, titleY + 30, 336, titleY + 30)
+    gfx.drawLine(64, titleY + 33, 85, titleY + 33)
+    gfx.drawLine(315, titleY + 33, 336, titleY + 33)
+
+    -- === "CHR" + [SPINNING GEAR] + "NO" (top line) ===
+    local gearR = 9
+    local gearGap = gearR * 2 + 6
+    local chrW = bf:getTextWidth("CHR")
+    local noW = bf:getTextWidth("NO")
+    local totalTopW = chrW + gearGap + noW
+    local topStartX = CENTER_X - totalTopW / 2
+    local textY = titleY + 6
+
+    gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
+    gfx.setFont(bf)
+    gfx.drawText("CHR", topStartX, textY)
+    gfx.drawText("NO", topStartX + chrW + gearGap, textY)
+
+    -- Spinning gear as the "O" in CHRONO
+    local gearCX = topStartX + chrW + gearGap / 2
+    local gearCY = textY + 8
+    gfx.setColor(gfx.kColorBlack)
+    drawGear(gearCX, gearCY, gearR, gearR * 0.65, 8, f * 0.05)
+    -- Hollow center
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(gearCX, gearCY, gearR * 0.35)
+    -- Center axle dot
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillCircleAtPoint(gearCX, gearCY, 1)
+
+    -- === "BREAK" (bottom line) ===
+    gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
+    gfx.setFont(bf)
+    gfx.drawTextAligned("BREAK", CENTER_X, textY + 20, kTextAlignment.center)
+
+    -- Subtitle
+    gfx.setFont(nf)
+    gfx.drawTextAligned("vs. The Time Wizard!", CENTER_X, textY + 38, kTextAlignment.center)
+
+    -- === TIME WIZARD (center of screen) ===
+    drawTimeWizardBig(CENTER_X, 128, f)
+
+    -- === ORBITING SPARK PARTICLES around wizard ===
+    for i = 0, 3 do
+        local sparkAngle = math.rad(f * 3 + i * 90)
+        local sparkR = 55 + math.sin(f * 0.05 + i) * 10
+        local sx = CENTER_X + sparkR * math.cos(sparkAngle)
+        local sy = 128 + sparkR * math.sin(sparkAngle) * 0.6
+        if (f + i * 5) % 12 < 8 then
             gfx.setColor(gfx.kColorBlack)
+            gfx.fillCircleAtPoint(sx, sy, 2)
+            local lineAngle = sparkAngle + math.pi / 4
             gfx.setLineWidth(1)
-            gfx.drawLine(px, py, px + sz*math.cos(tinyAngle), py + sz*math.sin(tinyAngle))
+            gfx.drawLine(sx, sy, sx + 4 * math.cos(lineAngle), sy + 4 * math.sin(lineAngle))
         end
     end
 
-    -- Title banner
-    gfx.setColor(gfx.kColorWhite)
-    gfx.fillRoundRect(60, 4 + titleBounce, 280, 42, 8)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.setLineWidth(3)
-    gfx.drawRoundRect(60, 4 + titleBounce, 280, 42, 8)
-
-    gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
-    gfx.setFont(gfx.getSystemFont(gfx.font.kVariantBold))
-    gfx.drawTextAligned("CRONOBREAK", CENTER_X, 9 + titleBounce, kTextAlignment.center)
-    gfx.setFont(gfx.getSystemFont())
-    gfx.drawTextAligned("vs. The Time Wizard!", CENTER_X, 28 + titleBounce, kTextAlignment.center)
-
-    -- BIG Time Wizard in center of menu
-    drawTimeWizardBig(CENTER_X, 120, titleFlameFrame)
-
+    -- Title bounce animation
     titleBounce = titleBounce + titleDir * 0.3
     if titleBounce > 3 or titleBounce < -3 then titleDir = -titleDir end
-    titleSkaterAngle = (titleSkaterAngle + 3) % 360
 end
 
 local function updateMenu()
@@ -592,35 +713,41 @@ local function updateMenu()
 
     local bf = gfx.getSystemFont(gfx.font.kVariantBold)
     local nf = gfx.getSystemFont()
+    local f = titleFlameFrame
 
     -- Menu options
-    local menuY = 178
+    local menuY = 186
     local options = {"Play", "How to Play"}
 
     for i, label in ipairs(options) do
-        local y = menuY + (i - 1) * 24
-        local tw = bf:getTextWidth(label) + 40
+        local y = menuY + (i - 1) * 22
+        local tw = bf:getTextWidth(label) + 44
 
         if i == menuSelection then
-            -- Selected: filled background
+            -- Selected: filled black bar with gear indicators
             gfx.setColor(gfx.kColorBlack)
-            gfx.fillRoundRect(CENTER_X - tw/2, y - 2, tw, 20, 4)
+            gfx.fillRoundRect(CENTER_X - tw/2, y - 2, tw, 19, 3)
             gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
             gfx.setFont(bf)
             gfx.drawTextAligned(label, CENTER_X, y, kTextAlignment.center)
 
-            -- Arrow indicator
-            local arrowX = CENTER_X - tw/2 - 2
-            if frameCount % 20 < 14 then
-                gfx.setColor(gfx.kColorBlack)
-                gfx.fillPolygon(arrowX - 8, y + 4, arrowX - 8, y + 14, arrowX - 2, y + 9)
-            end
-        else
-            -- Unselected
-            gfx.setColor(gfx.kColorWhite)
-            gfx.fillRoundRect(CENTER_X - tw/2, y - 2, tw, 20, 4)
+            -- Animated gear indicators on each side
+            local gearLeft = CENTER_X - tw/2 - 10
+            local gearRight = CENTER_X + tw/2 + 10
+            local gearMidY = y + 7
             gfx.setColor(gfx.kColorBlack)
-            gfx.drawRoundRect(CENTER_X - tw/2, y - 2, tw, 20, 4)
+            drawGear(gearLeft, gearMidY, 6, 4, 5, f * 0.08)
+            drawGear(gearRight, gearMidY, 6, 4, 5, -f * 0.08)
+            gfx.setColor(gfx.kColorWhite)
+            gfx.fillCircleAtPoint(gearLeft, gearMidY, 2)
+            gfx.fillCircleAtPoint(gearRight, gearMidY, 2)
+        else
+            -- Unselected: outlined
+            gfx.setColor(gfx.kColorWhite)
+            gfx.fillRoundRect(CENTER_X - tw/2, y - 2, tw, 19, 3)
+            gfx.setColor(gfx.kColorBlack)
+            gfx.setLineWidth(1)
+            gfx.drawRoundRect(CENTER_X - tw/2, y - 2, tw, 19, 3)
             gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
             gfx.setFont(nf)
             gfx.drawTextAligned(label, CENTER_X, y, kTextAlignment.center)
@@ -631,7 +758,7 @@ local function updateMenu()
     if highScore > 0 then
         gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
         gfx.setFont(nf)
-        gfx.drawTextAligned("Best: " .. highScore, CENTER_X, 228, kTextAlignment.center)
+        gfx.drawTextAligned("Best: " .. highScore, CENTER_X, 232, kTextAlignment.center)
     end
 
     -- Input

@@ -1,6 +1,6 @@
-name=Cronobreak
+name=Chrono Break
 author=THE TOYMAKERS
-description=A high-speed infinite runner with a twist! Use the crank to rotate 360 degrees and dodge obstacles on your skateboard.
+description=A high-speed infinite runner with a twist! Use the crank to rotate 360 degrees and dodge obstacles.
 bundleID=com.thetoymakers.cronobreak
 version=1.0.0
 buildNumber=1
