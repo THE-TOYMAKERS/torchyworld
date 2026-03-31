@@ -1,4 +1,4 @@
--- World module for Torchy's World
+-- World module for Cronobreak
 -- Radial particles, tunnel effect, progressive background zones
 
 local gfx <const> = playdate.graphics

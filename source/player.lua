@@ -1,4 +1,4 @@
--- Player module for Torchy's World
+-- Player module for Cronobreak
 -- Matchstick on fire riding a skateboard, orbiting the center
 -- Shoot fireballs (B), Jump (A), Slow-motion (D-pad)
 
