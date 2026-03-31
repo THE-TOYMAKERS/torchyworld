@@ -20,6 +20,7 @@ import "sound"
 -- GAME STATE
 -- ============================================================
 
+local STATE_SPLASH = 0
 local STATE_MENU = 1
 local STATE_HOWTOPLAY = 2
 local STATE_PLAYING = 3
@@ -27,7 +28,9 @@ local STATE_GAMEOVER = 4
 local STATE_READY = 5
 local STATE_SCORE_TALLY = 6
 
-local gameState = STATE_MENU
+local gameState = STATE_SPLASH
+local splashTimer = 0
+local splashSoundPlayed = false
 local score = 0
 local highScore = 0
 local gameSpeed = 1.0
@@ -538,6 +541,118 @@ local function drawTimeWizardBig(cx, cy, frame)
 end
 
 -- ============================================================
+-- SPLASH SCREEN (Toymakers Inc logo)
+-- ============================================================
+
+local function drawToymakersLogo(cx, cy, size)
+    -- Toymakers Inc logo: circle ring with two accent arc segments
+    -- Main ring (the big O shape, open on upper-right)
+    local outerR = size
+    local innerR = size * 0.58
+    local ringW = outerR - innerR
+
+    -- Draw the main ring (approx 270 degrees, gap at upper-right)
+    -- We draw it as a thick arc from ~45deg to ~315deg (going clockwise)
+    -- Using filled wedge approach: outer circle minus inner circle with masking
+    gfx.setColor(gfx.kColorBlack)
+
+    -- Full outer circle
+    gfx.fillCircleAtPoint(cx, cy, outerR)
+    -- Cut out inner circle to make ring
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillCircleAtPoint(cx, cy, innerR)
+
+    -- Cut out the gap at upper-right (a wedge from ~315 to ~45 degrees)
+    -- Use a white triangle to erase the gap section
+    gfx.setColor(gfx.kColorWhite)
+    local gapAngle1 = math.rad(-50)
+    local gapAngle2 = math.rad(50)
+    local gapR = outerR + 4
+    gfx.fillPolygon(
+        cx, cy,
+        cx + gapR * math.cos(gapAngle1), cy + gapR * math.sin(gapAngle1),
+        cx + gapR, cy,
+        cx + gapR * math.cos(gapAngle2), cy + gapR * math.sin(gapAngle2)
+    )
+
+    -- Top-right accent arc (the pink/magenta piece) - drawn with dither
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.4, gfx.image.kDitherTypeBayer4x4)
+    local accentR = outerR * 0.85
+    local accentInner = outerR * 0.42
+    -- Top-right arc segment
+    for a = -48, -8 do
+        local rad = math.rad(a)
+        local x1 = cx + accentInner * math.cos(rad)
+        local y1 = cy + accentInner * math.sin(rad)
+        local x2 = cx + accentR * math.cos(rad)
+        local y2 = cy + accentR * math.sin(rad)
+        gfx.setLineWidth(2)
+        gfx.drawLine(x1, y1, x2, y2)
+    end
+
+    -- Bottom-right accent arc (the blue piece) - drawn solid thin
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.6, gfx.image.kDitherTypeBayer8x8)
+    for a = 8, 48 do
+        local rad = math.rad(a)
+        local x1 = cx + accentInner * math.cos(rad)
+        local y1 = cy + accentInner * math.sin(rad)
+        local x2 = cx + accentR * math.cos(rad)
+        local y2 = cy + accentR * math.sin(rad)
+        gfx.setLineWidth(2)
+        gfx.drawLine(x1, y1, x2, y2)
+    end
+
+    -- Small registered trademark circle
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.0, gfx.image.kDitherTypeBayer4x4)
+    local tmX = cx + outerR * 0.75
+    local tmY = cy - outerR * 0.75
+    gfx.setLineWidth(1)
+    gfx.drawCircleAtPoint(tmX, tmY, 5)
+    gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
+    gfx.setFont(gfx.getSystemFont())
+    gfx.drawTextAligned("R", tmX, tmY - 6, kTextAlignment.center)
+end
+
+local function updateSplash()
+    frameCount = frameCount + 1
+    splashTimer = splashTimer + 1
+
+    -- Play boot jingle on first frame
+    if not splashSoundPlayed and soundManager then
+        soundManager:playBootJingle()
+        splashSoundPlayed = true
+    end
+
+    gfx.clear(gfx.kColorWhite)
+
+    -- Fade in effect: logo appears gradually via dither
+    local progress = math.min(1.0, splashTimer / 30) -- fade in over 1 second
+
+    if splashTimer > 10 then
+        -- Draw logo centered above middle
+        drawToymakersLogo(CENTER_X, CENTER_Y - 20, 40)
+
+        -- "by Toymakers Inc" text below logo
+        gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
+        gfx.setFont(gfx.getSystemFont(gfx.font.kVariantBold))
+        gfx.drawTextAligned("Toymakers Inc.", CENTER_X, CENTER_Y + 38, kTextAlignment.center)
+    end
+
+    -- Auto-advance to menu after ~3 seconds (90 frames at 30fps)
+    -- or on any button press
+    if splashTimer > 90 or
+       (splashTimer > 30 and playdate.buttonJustPressed(playdate.kButtonA)) then
+        gameState = STATE_MENU
+        if soundManager then
+            soundManager:playMenuArrive()
+        end
+    end
+end
+
+-- ============================================================
 -- MENU (Home Screen)
 -- ============================================================
 
@@ -620,34 +735,32 @@ local function drawMenuBackground()
 
     -- Panel background
     gfx.setColor(gfx.kColorWhite)
-    gfx.fillRoundRect(42, titleY - 2, 316, 62, 6)
+    gfx.fillRoundRect(55, titleY - 2, 290, 46, 6)
     -- Outer border
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(3)
-    gfx.drawRoundRect(42, titleY - 2, 316, 62, 6)
+    gfx.drawRoundRect(55, titleY - 2, 290, 46, 6)
     -- Inner border for depth
     gfx.setLineWidth(1)
-    gfx.drawRoundRect(46, titleY + 2, 308, 54, 4)
+    gfx.drawRoundRect(59, titleY + 2, 282, 38, 4)
 
     -- Corner gears on title panel (spinning opposite directions)
     gfx.setColor(gfx.kColorBlack)
-    drawGear(54, titleY + 8, 7, 4.5, 6, -f * 0.04)
-    drawGear(346, titleY + 8, 7, 4.5, 6, f * 0.04)
-    drawGear(54, titleY + 52, 7, 4.5, 6, f * 0.03)
-    drawGear(346, titleY + 52, 7, 4.5, 6, -f * 0.03)
+    drawGear(67, titleY + 8, 7, 4.5, 6, -f * 0.04)
+    drawGear(333, titleY + 8, 7, 4.5, 6, f * 0.04)
+    drawGear(67, titleY + 36, 7, 4.5, 6, f * 0.03)
+    drawGear(333, titleY + 36, 7, 4.5, 6, -f * 0.03)
     gfx.setColor(gfx.kColorWhite)
-    gfx.fillCircleAtPoint(54, titleY + 8, 2.5)
-    gfx.fillCircleAtPoint(346, titleY + 8, 2.5)
-    gfx.fillCircleAtPoint(54, titleY + 52, 2.5)
-    gfx.fillCircleAtPoint(346, titleY + 52, 2.5)
+    gfx.fillCircleAtPoint(67, titleY + 8, 2.5)
+    gfx.fillCircleAtPoint(333, titleY + 8, 2.5)
+    gfx.fillCircleAtPoint(67, titleY + 36, 2.5)
+    gfx.fillCircleAtPoint(333, titleY + 36, 2.5)
 
     -- Decorative horizontal lines flanking title
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(1)
-    gfx.drawLine(64, titleY + 30, 95, titleY + 30)
-    gfx.drawLine(305, titleY + 30, 336, titleY + 30)
-    gfx.drawLine(64, titleY + 33, 85, titleY + 33)
-    gfx.drawLine(315, titleY + 33, 336, titleY + 33)
+    gfx.drawLine(77, titleY + 22, 100, titleY + 22)
+    gfx.drawLine(300, titleY + 22, 323, titleY + 22)
 
     -- === "CHR" + [SPINNING GEAR] + "NO" (top line) ===
     local gearR = 9
@@ -679,10 +792,6 @@ local function drawMenuBackground()
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
     gfx.setFont(bf)
     gfx.drawTextAligned("BREAK", CENTER_X, textY + 20, kTextAlignment.center)
-
-    -- Subtitle
-    gfx.setFont(nf)
-    gfx.drawTextAligned("vs. The Time Wizard!", CENTER_X, textY + 38, kTextAlignment.center)
 
     -- === TIME WIZARD (center of screen) ===
     drawTimeWizardBig(CENTER_X, 128, f)
@@ -965,7 +1074,7 @@ local function updatePlaying()
             if player:useShield() then
                 triggerShake(3, 8); soundManager:playHit()
             else
-                triggerShake(6, 15); soundManager:playGameOver(); soundManager:stopMusic()
+                triggerShake(6, 15); soundManager:playDeath(); soundManager:stopMusic()
                 startScoreTally()
                 return
             end
@@ -979,7 +1088,7 @@ local function updatePlaying()
             if player:useShield() then
                 triggerShake(3, 8); soundManager:playHit(); player.fallTimer = 0
             else
-                triggerShake(6, 15); soundManager:playGameOver(); soundManager:stopMusic()
+                triggerShake(6, 15); soundManager:playDeath(); soundManager:stopMusic()
                 startScoreTally()
                 return
             end
@@ -1298,7 +1407,8 @@ end
 -- ============================================================
 
 function playdate.update()
-    if gameState == STATE_MENU then updateMenu()
+    if gameState == STATE_SPLASH then updateSplash()
+    elseif gameState == STATE_MENU then updateMenu()
     elseif gameState == STATE_HOWTOPLAY then updateHowToPlay()
     elseif gameState == STATE_READY then updateReady()
     elseif gameState == STATE_PLAYING then updatePlaying()
