@@ -23,6 +23,10 @@ local INCOMING_SPAWN_RATE = 100
 -- Triangle orbit speed on the ring
 local TRIANGLE_ORBIT_SPEED = 1.5
 
+-- How long obstacles stay on the ring before fading out (in frames)
+local OBSTACLE_LIFETIME = 120  -- ~4 seconds at 30fps
+local OBSTACLE_FADE_FRAMES = 15
+
 -- Bubble spawn
 local BUBBLE_SPAWN_CHANCE = 0.08  -- Per obstacle spawn cycle
 
@@ -86,10 +90,24 @@ function ObstacleManager:update(gameSpeed, distance)
 
     self:updateIncomingObstacles(gameSpeed)
 
-    -- Update landed track obstacles
-    for _, obs in ipairs(self.obstacles) do
-        if obs.active and obs.type == "triangle" and obs.orbiting then
-            obs.angle = (obs.angle + obs.orbitSpeed * gameSpeed) % 360
+    -- Update landed track obstacles (movement + lifetime decay)
+    for i = #self.obstacles, 1, -1 do
+        local obs = self.obstacles[i]
+        if obs.active then
+            -- Triangle orbiting
+            if obs.type == "triangle" and obs.orbiting then
+                obs.angle = (obs.angle + obs.orbitSpeed * gameSpeed) % 360
+            end
+
+            -- Lifetime countdown (not for bubbles - they stay until collected)
+            if obs.type ~= "bubble" then
+                obs.lifetime = obs.lifetime - gameSpeed
+                if obs.lifetime <= 0 then
+                    -- Fade out and remove
+                    obs.active = false
+                    table.remove(self.obstacles, i)
+                end
+            end
         end
     end
 
@@ -272,7 +290,8 @@ function ObstacleManager:updateIncomingObstacles(gameSpeed)
                     orbiting = false,
                     orbitSpeed = 0,
                     dangerous = true,
-                    size = obs.size
+                    size = obs.size,
+                    lifetime = OBSTACLE_LIFETIME
                 })
             elseif obs.type == "triangle" then
                 local dir = (math.random() < 0.5) and 1 or -1
@@ -283,7 +302,8 @@ function ObstacleManager:updateIncomingObstacles(gameSpeed)
                     orbiting = true,
                     orbitSpeed = TRIANGLE_ORBIT_SPEED * dir,
                     dangerous = true,
-                    size = obs.size
+                    size = obs.size,
+                    lifetime = OBSTACLE_LIFETIME
                 })
             end
         end
@@ -661,7 +681,21 @@ function ObstacleManager:drawTrackObstacle(centerX, centerY, orbitRadius, obs)
     local x = centerX + orbitRadius * math.cos(rad)
     local y = centerY + orbitRadius * math.sin(rad)
 
-    gfx.setColor(gfx.kColorBlack)
+    -- Fade out as lifetime expires
+    if obs.lifetime and obs.lifetime < OBSTACLE_FADE_FRAMES then
+        local fadeAlpha = obs.lifetime / OBSTACLE_FADE_FRAMES
+        -- Blink during final moments
+        if obs.lifetime < OBSTACLE_FADE_FRAMES / 2 then
+            if math.floor(obs.lifetime) % 4 < 2 then
+                return -- blink off
+            end
+        end
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(1.0 - fadeAlpha, gfx.image.kDitherTypeBayer4x4)
+    else
+        gfx.setColor(gfx.kColorBlack)
+    end
+
     self:drawObstacleShape(x, y, obs.type, obs.size)
 
     -- Motion trail for orbiting triangles
