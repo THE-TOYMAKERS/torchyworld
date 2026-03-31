@@ -144,7 +144,7 @@ function HUD:draw(score, highScore, gameSpeed, distance, ammo, maxAmmo)
         elseif ammo <= 0 then
             gfx.setFont(normalFont)
             gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
-            gfx.drawTextAligned("NO AMMO! Collect stars!", SCREEN_W / 2, SCREEN_H - 36, kTextAlignment.center)
+            gfx.drawTextAligned("NO AMMO!", SCREEN_W / 2, SCREEN_H - 36, kTextAlignment.center)
         end
     end
 

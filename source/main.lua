@@ -313,35 +313,51 @@ local function updatePlaying()
     -- Check player-obstacle collisions
     local collision, collisionType = obstacleManager:checkCollision(player)
     if collision then
-        if collisionType == "star" then
-            score = score + 50
-            player:addAmmo(3)
+        if collisionType == "bubble" then
+            -- Collected a bubble power-up: activate shield
+            player:activateShield()
             soundManager:playStar()
+            score = score + 10
         else
-            -- Hit obstacle - game over!
-            triggerShake(6, 15)
-            soundManager:playGameOver()
-            soundManager:stopMusic()
-            gameState = STATE_GAMEOVER
-            if score > highScore then
-                highScore = score
+            -- Hit obstacle!
+            if player:useShield() then
+                -- Shield absorbed the hit
+                triggerShake(3, 8)
+                soundManager:playHit()
+            else
+                -- No shield - game over
+                triggerShake(6, 15)
+                soundManager:playGameOver()
+                soundManager:stopMusic()
+                gameState = STATE_GAMEOVER
+                if score > highScore then
+                    highScore = score
+                end
+                return
             end
-            return
         end
     end
 
     -- Platform fall check
+    -- Reduced grace period (3 frames) so fast crank can't cheese gaps
     if not player.isJumping and not obstacleManager:isOnPlatform(player) then
         player.fallTimer = player.fallTimer + 1
-        if player.fallTimer > 10 then
-            triggerShake(6, 15)
-            soundManager:playGameOver()
-            soundManager:stopMusic()
-            gameState = STATE_GAMEOVER
-            if score > highScore then
-                highScore = score
+        if player.fallTimer > 3 then
+            if player:useShield() then
+                -- Shield saves from falling
+                triggerShake(3, 8)
+                soundManager:playHit()
+                player.fallTimer = 0
+            else
+                triggerShake(6, 15)
+                soundManager:playGameOver()
+                soundManager:stopMusic()
+                gameState = STATE_GAMEOVER
+                if score > highScore then
+                    highScore = score
+                end
+                return
             end
-            return
         end
     else
         player.fallTimer = 0
