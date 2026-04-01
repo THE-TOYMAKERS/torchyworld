@@ -69,6 +69,10 @@ function SoundManager:init()
     self.musicPlaying = false
     self.baseBPM = 80  -- Natural tempo of the WAV file
     self.currentRate = 1.0
+
+    -- Load intro music WAV for menu screen
+    self.introPlayer = snd.fileplayer.new("intromusic")
+    self.introPlaying = false
 end
 
 -- === SOUND EFFECTS ===
@@ -131,7 +135,33 @@ function SoundManager:updateWhoosh(crankChange)
     end
 end
 
--- === MUSIC ===
+-- === INTRO MUSIC (menu screen) ===
+
+function SoundManager:startIntroMusic()
+    if self.introPlaying then return end
+    self.introPlayer:setVolume(0)
+    self.introPlayer:play(0)  -- 0 = loop forever
+    self.introPlaying = true
+    -- Fade in over ~1 second
+    self.introFadeTarget = 1.0
+    self.introFadeVol = 0
+end
+
+function SoundManager:stopIntroMusic()
+    if not self.introPlaying then return end
+    self.introPlayer:stop()
+    self.introPlaying = false
+end
+
+function SoundManager:updateIntroMusic()
+    if not self.introPlaying then return end
+    if self.introFadeVol < self.introFadeTarget then
+        self.introFadeVol = math.min(self.introFadeTarget, self.introFadeVol + 0.03)
+        self.introPlayer:setVolume(self.introFadeVol)
+    end
+end
+
+-- === GAMEPLAY MUSIC ===
 
 function SoundManager:startMusic()
     self.musicPlaying = true
@@ -209,6 +239,7 @@ end
 
 function SoundManager:cleanup()
     self:stopMusic()
+    self:stopIntroMusic()
     if self.whooshPlaying then
         self.whooshSynth:stop()
         self.whooshPlaying = false

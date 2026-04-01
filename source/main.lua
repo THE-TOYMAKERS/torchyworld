@@ -545,75 +545,63 @@ end
 -- ============================================================
 
 local function drawToymakersLogo(cx, cy, size)
-    -- Toymakers Inc logo: circle ring with two accent arc segments
-    -- Main ring (the big O shape, open on upper-right)
+    -- Toymakers Inc logo based on official SVG
+    -- C-shaped ring with curved accent wings on the right
     local outerR = size
-    local innerR = size * 0.58
-    local ringW = outerR - innerR
+    local innerR = size * 0.61
 
-    -- Draw the main ring (approx 270 degrees, gap at upper-right)
-    -- We draw it as a thick arc from ~45deg to ~315deg (going clockwise)
-    -- Using filled wedge approach: outer circle minus inner circle with masking
+    -- === MAIN RING (nearly full circle, narrow gap on right) ===
     gfx.setColor(gfx.kColorBlack)
-
-    -- Full outer circle
     gfx.fillCircleAtPoint(cx, cy, outerR)
-    -- Cut out inner circle to make ring
     gfx.setColor(gfx.kColorWhite)
     gfx.fillCircleAtPoint(cx, cy, innerR)
 
-    -- Cut out the gap at upper-right (a wedge from ~315 to ~45 degrees)
-    -- Use a white triangle to erase the gap section
+    -- Cut narrow horizontal gap on right side
     gfx.setColor(gfx.kColorWhite)
-    local gapAngle1 = math.rad(-50)
-    local gapAngle2 = math.rad(50)
-    local gapR = outerR + 4
-    gfx.fillPolygon(
-        cx, cy,
-        cx + gapR * math.cos(gapAngle1), cy + gapR * math.sin(gapAngle1),
-        cx + gapR, cy,
-        cx + gapR * math.cos(gapAngle2), cy + gapR * math.sin(gapAngle2)
-    )
+    local gapHalf = size * 0.055
+    gfx.fillRect(cx + innerR - 1, cy - gapHalf, outerR - innerR + 3, gapHalf * 2)
 
-    -- Top-right accent arc (the pink/magenta piece) - drawn with dither
+    -- === TOP-RIGHT ACCENT (pink in color) ===
+    -- Curved wing shape sampled from SVG bezier paths
     gfx.setColor(gfx.kColorBlack)
-    gfx.setDitherPattern(0.4, gfx.image.kDitherTypeBayer4x4)
-    local accentR = outerR * 0.85
-    local accentInner = outerR * 0.42
-    -- Top-right arc segment
-    for a = -48, -8 do
-        local rad = math.rad(a)
-        local x1 = cx + accentInner * math.cos(rad)
-        local y1 = cy + accentInner * math.sin(rad)
-        local x2 = cx + accentR * math.cos(rad)
-        local y2 = cy + accentR * math.sin(rad)
-        gfx.setLineWidth(2)
-        gfx.drawLine(x1, y1, x2, y2)
-    end
+    gfx.setDitherPattern(0.35, gfx.image.kDitherTypeBayer4x4)
+    local s = size
+    local pink = {
+        -- Inner edge (curves from top-right toward center-right)
+        cx + 0.726*s, cy - 0.997*s,
+        cx + 0.740*s, cy - 0.861*s,
+        cx + 0.791*s, cy - 0.679*s,
+        cx + 0.889*s, cy - 0.482*s,
+        cx + 1.049*s, cy - 0.296*s,
+        cx + 1.245*s, cy - 0.158*s,
+        cx + 1.437*s, cy - 0.077*s,
+        cx + 1.601*s, cy - 0.041*s,
+        cx + 1.718*s, cy - 0.036*s,
+        -- Right edge
+        cx + 1.718*s, cy - 0.432*s,
+        -- Outer edge (curves back toward top)
+        cx + 1.432*s, cy - 0.506*s,
+        cx + 1.250*s, cy - 0.658*s,
+        cx + 1.153*s, cy - 0.838*s,
+        cx + 1.121*s, cy - 0.997*s,
+    }
+    gfx.fillPolygon(table.unpack(pink))
 
-    -- Bottom-right accent arc (the blue piece) - drawn solid thin
+    -- === BOTTOM-RIGHT ACCENT (blue in color) - vertical mirror of pink ===
     gfx.setColor(gfx.kColorBlack)
-    gfx.setDitherPattern(0.6, gfx.image.kDitherTypeBayer8x8)
-    for a = 8, 48 do
-        local rad = math.rad(a)
-        local x1 = cx + accentInner * math.cos(rad)
-        local y1 = cy + accentInner * math.sin(rad)
-        local x2 = cx + accentR * math.cos(rad)
-        local y2 = cy + accentR * math.sin(rad)
-        gfx.setLineWidth(2)
-        gfx.drawLine(x1, y1, x2, y2)
+    gfx.setDitherPattern(0.55, gfx.image.kDitherTypeBayer8x8)
+    local blue = {}
+    for i = 1, #pink, 2 do
+        blue[#blue + 1] = pink[i]
+        blue[#blue + 1] = 2 * cy - pink[i + 1]
     end
+    gfx.fillPolygon(table.unpack(blue))
 
-    -- Small registered trademark circle
+    -- === THIN CENTER LINE between accents ===
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.0, gfx.image.kDitherTypeBayer4x4)
-    local tmX = cx + outerR * 0.75
-    local tmY = cy - outerR * 0.75
     gfx.setLineWidth(1)
-    gfx.drawCircleAtPoint(tmX, tmY, 5)
-    gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
-    gfx.setFont(gfx.getSystemFont())
-    gfx.drawTextAligned("R", tmX, tmY - 6, kTextAlignment.center)
+    gfx.drawLine(cx + innerR, cy, cx + 1.72 * s, cy)
 end
 
 local function updateSplash()
@@ -648,6 +636,7 @@ local function updateSplash()
         gameState = STATE_MENU
         if soundManager then
             soundManager:playMenuArrive()
+            soundManager:startIntroMusic()
         end
     end
 end
@@ -818,6 +807,7 @@ end
 
 local function updateMenu()
     frameCount = frameCount + 1
+    if soundManager then soundManager:updateIntroMusic() end
     drawMenuBackground()
 
     local bf = gfx.getSystemFont(gfx.font.kVariantBold)
@@ -877,6 +867,7 @@ local function updateMenu()
 
     if playdate.buttonJustPressed(playdate.kButtonA) then
         if menuSelection == 1 then
+            if soundManager then soundManager:stopIntroMusic() end
             gameState = STATE_READY; readyTimer = 90; initGame()
         else
             gameState = STATE_HOWTOPLAY
@@ -890,6 +881,7 @@ end
 
 local function updateHowToPlay()
     frameCount = frameCount + 1
+    if soundManager then soundManager:updateIntroMusic() end
     gfx.clear(gfx.kColorWhite)
 
     local bf = gfx.getSystemFont(gfx.font.kVariantBold)
@@ -1395,6 +1387,7 @@ local function updateGameOver()
             else
                 -- Main Menu
                 gameState = STATE_MENU; gameOverTimer = 0; menuSelection = 1
+                if soundManager then soundManager:startIntroMusic() end
             end
         end
     end
