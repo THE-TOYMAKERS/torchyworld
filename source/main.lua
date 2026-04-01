@@ -648,6 +648,7 @@ local function updateSplash()
         gameState = STATE_MENU
         if soundManager then
             soundManager:playMenuArrive()
+            soundManager:startIntroMusic()
         end
     end
 end
@@ -818,6 +819,7 @@ end
 
 local function updateMenu()
     frameCount = frameCount + 1
+    if soundManager then soundManager:updateIntroMusic() end
     drawMenuBackground()
 
     local bf = gfx.getSystemFont(gfx.font.kVariantBold)
@@ -877,6 +879,7 @@ local function updateMenu()
 
     if playdate.buttonJustPressed(playdate.kButtonA) then
         if menuSelection == 1 then
+            if soundManager then soundManager:stopIntroMusic() end
             gameState = STATE_READY; readyTimer = 90; initGame()
         else
             gameState = STATE_HOWTOPLAY
@@ -890,6 +893,7 @@ end
 
 local function updateHowToPlay()
     frameCount = frameCount + 1
+    if soundManager then soundManager:updateIntroMusic() end
     gfx.clear(gfx.kColorWhite)
 
     local bf = gfx.getSystemFont(gfx.font.kVariantBold)
@@ -1395,6 +1399,7 @@ local function updateGameOver()
             else
                 -- Main Menu
                 gameState = STATE_MENU; gameOverTimer = 0; menuSelection = 1
+                if soundManager then soundManager:startIntroMusic() end
             end
         end
     end
