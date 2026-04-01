@@ -564,9 +564,14 @@ local function updateSplash()
 
         -- "CHRONO BREAK" title below wizard
         local bf = gfx.getSystemFont(gfx.font.kVariantBold)
+        local nf = gfx.getSystemFont()
         gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
         gfx.setFont(bf)
-        gfx.drawTextAligned("CHRONO BREAK", CENTER_X, CENTER_Y + 80, kTextAlignment.center)
+        gfx.drawTextAligned("CHRONO BREAK", CENTER_X, CENTER_Y + 76, kTextAlignment.center)
+
+        -- "by Toymakers Inc." below title
+        gfx.setFont(nf)
+        gfx.drawTextAligned("by Toymakers Inc.", CENTER_X, CENTER_Y + 94, kTextAlignment.center)
     end
 
     -- Auto-advance to menu after ~3 seconds (90 frames at 30fps)
