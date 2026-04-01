@@ -602,6 +602,16 @@ local function drawToymakersLogo(cx, cy, size)
     gfx.setDitherPattern(0.0, gfx.image.kDitherTypeBayer4x4)
     gfx.setLineWidth(1)
     gfx.drawLine(cx + innerR, cy, cx + 1.72 * s, cy)
+
+    -- === REGISTERED TRADEMARK SYMBOL ===
+    gfx.setColor(gfx.kColorBlack)
+    local tmX = cx + outerR * 0.75
+    local tmY = cy - outerR * 0.75
+    gfx.setLineWidth(1)
+    gfx.drawCircleAtPoint(tmX, tmY, 5)
+    gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
+    gfx.setFont(gfx.getSystemFont())
+    gfx.drawTextAligned("R", tmX, tmY - 6, kTextAlignment.center)
 end
 
 local function updateSplash()
@@ -621,12 +631,16 @@ local function updateSplash()
 
     if splashTimer > 10 then
         -- Draw logo centered above middle
-        drawToymakersLogo(CENTER_X, CENTER_Y - 20, 40)
+        -- Logo extends from cx-size to cx+1.718*size, so visual center
+        -- is offset right by (1.718-1)/2 * size = 0.359 * size
+        local logoSize = 40
+        local logoVisualCenterX = CENTER_X + 0.359 * logoSize
+        drawToymakersLogo(CENTER_X, CENTER_Y - 20, logoSize)
 
-        -- "by Toymakers Inc" text below logo
+        -- "Toymakers Inc." text centered under the full logo
         gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
         gfx.setFont(gfx.getSystemFont(gfx.font.kVariantBold))
-        gfx.drawTextAligned("Toymakers Inc.", CENTER_X, CENTER_Y + 38, kTextAlignment.center)
+        gfx.drawTextAligned("Toymakers Inc.", logoVisualCenterX, CENTER_Y + 38, kTextAlignment.center)
     end
 
     -- Auto-advance to menu after ~3 seconds (90 frames at 30fps)
@@ -853,11 +867,11 @@ local function updateMenu()
         end
     end
 
-    -- High score
+    -- High score (bottom-right, inline with How to Play row)
     if highScore > 0 then
         gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
         gfx.setFont(nf)
-        gfx.drawTextAligned("Best: " .. highScore, CENTER_X, 232, kTextAlignment.center)
+        gfx.drawText("Best: " .. highScore, SCREEN_W - nf:getTextWidth("Best: " .. highScore) - 12, menuY + 22)
     end
 
     -- Input
