@@ -541,80 +541,8 @@ local function drawTimeWizardBig(cx, cy, frame)
 end
 
 -- ============================================================
--- SPLASH SCREEN (Toymakers Inc logo)
+-- SPLASH SCREEN (Chrono Break intro)
 -- ============================================================
-
-local function drawToymakersLogo(cx, cy, size)
-    -- Toymakers Inc logo: circle ring with two accent arc segments
-    -- Main ring (the big O shape, open on upper-right)
-    local outerR = size
-    local innerR = size * 0.58
-    local ringW = outerR - innerR
-
-    -- Draw the main ring (approx 270 degrees, gap at upper-right)
-    -- We draw it as a thick arc from ~45deg to ~315deg (going clockwise)
-    -- Using filled wedge approach: outer circle minus inner circle with masking
-    gfx.setColor(gfx.kColorBlack)
-
-    -- Full outer circle
-    gfx.fillCircleAtPoint(cx, cy, outerR)
-    -- Cut out inner circle to make ring
-    gfx.setColor(gfx.kColorWhite)
-    gfx.fillCircleAtPoint(cx, cy, innerR)
-
-    -- Cut out the gap at upper-right (a wedge from ~315 to ~45 degrees)
-    -- Use a white triangle to erase the gap section
-    gfx.setColor(gfx.kColorWhite)
-    local gapAngle1 = math.rad(-50)
-    local gapAngle2 = math.rad(50)
-    local gapR = outerR + 4
-    gfx.fillPolygon(
-        cx, cy,
-        cx + gapR * math.cos(gapAngle1), cy + gapR * math.sin(gapAngle1),
-        cx + gapR, cy,
-        cx + gapR * math.cos(gapAngle2), cy + gapR * math.sin(gapAngle2)
-    )
-
-    -- Top-right accent arc (the pink/magenta piece) - drawn with dither
-    gfx.setColor(gfx.kColorBlack)
-    gfx.setDitherPattern(0.4, gfx.image.kDitherTypeBayer4x4)
-    local accentR = outerR * 0.85
-    local accentInner = outerR * 0.42
-    -- Top-right arc segment
-    for a = -48, -8 do
-        local rad = math.rad(a)
-        local x1 = cx + accentInner * math.cos(rad)
-        local y1 = cy + accentInner * math.sin(rad)
-        local x2 = cx + accentR * math.cos(rad)
-        local y2 = cy + accentR * math.sin(rad)
-        gfx.setLineWidth(2)
-        gfx.drawLine(x1, y1, x2, y2)
-    end
-
-    -- Bottom-right accent arc (the blue piece) - drawn solid thin
-    gfx.setColor(gfx.kColorBlack)
-    gfx.setDitherPattern(0.6, gfx.image.kDitherTypeBayer8x8)
-    for a = 8, 48 do
-        local rad = math.rad(a)
-        local x1 = cx + accentInner * math.cos(rad)
-        local y1 = cy + accentInner * math.sin(rad)
-        local x2 = cx + accentR * math.cos(rad)
-        local y2 = cy + accentR * math.sin(rad)
-        gfx.setLineWidth(2)
-        gfx.drawLine(x1, y1, x2, y2)
-    end
-
-    -- Small registered trademark circle
-    gfx.setColor(gfx.kColorBlack)
-    gfx.setDitherPattern(0.0, gfx.image.kDitherTypeBayer4x4)
-    local tmX = cx + outerR * 0.75
-    local tmY = cy - outerR * 0.75
-    gfx.setLineWidth(1)
-    gfx.drawCircleAtPoint(tmX, tmY, 5)
-    gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
-    gfx.setFont(gfx.getSystemFont())
-    gfx.drawTextAligned("R", tmX, tmY - 6, kTextAlignment.center)
-end
 
 local function updateSplash()
     frameCount = frameCount + 1
@@ -628,17 +556,17 @@ local function updateSplash()
 
     gfx.clear(gfx.kColorWhite)
 
-    -- Fade in effect: logo appears gradually via dither
-    local progress = math.min(1.0, splashTimer / 30) -- fade in over 1 second
+    local f = splashTimer
 
-    if splashTimer > 10 then
-        -- Draw logo centered above middle
-        drawToymakersLogo(CENTER_X, CENTER_Y - 20, 40)
+    if f > 10 then
+        -- Draw the Time Wizard at center
+        drawTimeWizardBig(CENTER_X, CENTER_Y + 10, f)
 
-        -- "by Toymakers Inc" text below logo
+        -- "CHRONO BREAK" title below wizard
+        local bf = gfx.getSystemFont(gfx.font.kVariantBold)
         gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
-        gfx.setFont(gfx.getSystemFont(gfx.font.kVariantBold))
-        gfx.drawTextAligned("Toymakers Inc.", CENTER_X, CENTER_Y + 38, kTextAlignment.center)
+        gfx.setFont(bf)
+        gfx.drawTextAligned("CHRONO BREAK", CENTER_X, CENTER_Y + 80, kTextAlignment.center)
     end
 
     -- Auto-advance to menu after ~3 seconds (90 frames at 30fps)
