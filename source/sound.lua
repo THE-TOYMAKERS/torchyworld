@@ -51,6 +51,15 @@ function SoundManager:init()
     self.deathSynth:setADSR(0.005, 0.15, 0.3, 0.1)
     self.deathSynth:setVolume(0.3)
 
+    -- === MENU UI SYNTHS (subtle click/highlight sounds) ===
+    self.menuHighlightSynth = snd.synth.new(snd.kWaveTriangle)
+    self.menuHighlightSynth:setADSR(0.0, 0.04, 0.0, 0.04)
+    self.menuHighlightSynth:setVolume(0.12)
+
+    self.menuSelectSynth = snd.synth.new(snd.kWaveTriangle)
+    self.menuSelectSynth:setADSR(0.0, 0.06, 0.15, 0.08)
+    self.menuSelectSynth:setVolume(0.18)
+
     -- === BOOT-UP / JINGLE SYNTHS ===
     self.jingleSynth = snd.synth.new(snd.kWaveTriangle)
     self.jingleSynth:setADSR(0.01, 0.1, 0.4, 0.2)
@@ -224,6 +233,21 @@ function SoundManager:playBootJingle()
     playdate.timer.performAfterDelay(350, function()
         self.jingleSynth:playMIDINote(84, 0.35, 0.3) -- C6 (bright finish)
         self.jingleBassSynth:playMIDINote(60, 0.20, 0.3) -- C4 bass resolve
+    end)
+end
+
+-- === MENU UI SOUNDS ===
+
+function SoundManager:playMenuHighlight()
+    -- Soft tick when changing selection
+    self.menuHighlightSynth:playMIDINote(74, 0.12, 0.04)
+end
+
+function SoundManager:playMenuSelect()
+    -- Satisfying confirm when pressing A on a menu option
+    self.menuSelectSynth:playMIDINote(72, 0.18, 0.06)
+    playdate.timer.performAfterDelay(50, function()
+        self.menuSelectSynth:playMIDINote(79, 0.15, 0.1)
     end)
 end
 
