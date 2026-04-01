@@ -296,55 +296,171 @@ function Player:drawMatchstick()
     local outY = math.sin(rad)
     local perpX = -math.sin(rad)
     local perpY = math.cos(rad)
+    local f = self.flameFrame
 
-    -- Skateboard
-    local bLen = 12
+    -- ==============================
+    -- ENHANCED SKATEBOARD
+    -- ==============================
+    local bLen = 13
+
+    -- Board deck (thicker, with kicktails)
+    local bx1, by1 = self.x + perpX * bLen, self.y + perpY * bLen
+    local bx2, by2 = self.x - perpX * bLen, self.y - perpY * bLen
     gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(4)
+    gfx.drawLine(bx1, by1, bx2, by2)
+
+    -- Kicktail curves (front and back)
+    local kickOut = 3.5
     gfx.setLineWidth(3)
-    gfx.drawLine(self.x + perpX*bLen, self.y + perpY*bLen, self.x - perpX*bLen, self.y - perpY*bLen)
+    gfx.drawLine(bx1, by1, bx1 + outX * kickOut + perpX * 2, by1 + outY * kickOut + perpY * 2)
+    gfx.drawLine(bx2, by2, bx2 + outX * kickOut - perpX * 2, by2 + outY * kickOut - perpY * 2)
 
+    -- Deck stripe detail (dithered grip tape)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.setLineWidth(2)
-    local bx1, by1 = self.x + perpX*bLen, self.y + perpY*bLen
-    local bx2, by2 = self.x - perpX*bLen, self.y - perpY*bLen
-    gfx.drawLine(bx1, by1, bx1 + outX*3, by1 + outY*3)
-    gfx.drawLine(bx2, by2, bx2 + outX*3, by2 + outY*3)
+    gfx.drawLine(self.x + perpX * (bLen - 4), self.y + perpY * (bLen - 4),
+                 self.x - perpX * (bLen - 4), self.y - perpY * (bLen - 4))
 
-    -- Wheels
+    -- Trucks (axle bars connecting to wheels)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.0)
+    gfx.setLineWidth(2)
     for _, sign in ipairs({-1, 1}) do
-        local wx = self.x + perpX*(bLen-3)*sign + outX*2
-        local wy = self.y + perpY*(bLen-3)*sign + outY*2
-        gfx.setColor(gfx.kColorBlack)
-        gfx.fillCircleAtPoint(wx, wy, 2.5)
-        gfx.setColor(gfx.kColorWhite)
-        gfx.fillCircleAtPoint(wx, wy, 1)
+        local tx = self.x + perpX * (bLen - 4) * sign
+        local ty = self.y + perpY * (bLen - 4) * sign
+        gfx.drawLine(tx, ty, tx + outX * 3, ty + outY * 3)
     end
 
-    -- Stick body
-    local ssx, ssy = self.x + outX*2, self.y + outY*2
-    local sex, sey = self.x + outX*16, self.y + outY*16
+    -- Wheels (bigger, with spinning spokes)
+    for _, sign in ipairs({-1, 1}) do
+        local wx = self.x + perpX * (bLen - 3) * sign + outX * 3.5
+        local wy = self.y + perpY * (bLen - 3) * sign + outY * 3.5
+        gfx.setColor(gfx.kColorBlack)
+        gfx.fillCircleAtPoint(wx, wy, 3)
+        gfx.setColor(gfx.kColorWhite)
+        gfx.fillCircleAtPoint(wx, wy, 1.5)
+        -- Spinning spoke
+        local spokeAngle = f * 0.3 * sign
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setLineWidth(1)
+        gfx.drawLine(wx + math.cos(spokeAngle) * 2.5, wy + math.sin(spokeAngle) * 2.5,
+                     wx - math.cos(spokeAngle) * 2.5, wy - math.sin(spokeAngle) * 2.5)
+    end
+
+    -- Speed lines behind the board when moving fast
+    local crankDelta = math.abs(self.angle - self.prevAngle)
+    if crankDelta > 2 or self.isJumping then
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setDitherPattern(0.6, gfx.image.kDitherTypeBayer4x4)
+        gfx.setLineWidth(1)
+        for i = 1, 3 do
+            local lineOff = i * 4
+            local jitter = math.sin(f * 0.5 + i * 2) * 1.5
+            local lx = self.x - outX * (lineOff + 2) + perpX * jitter
+            local ly = self.y - outY * (lineOff + 2) + perpY * jitter
+            gfx.drawLine(lx - perpX * 5, ly - perpY * 5, lx + perpX * 5, ly + perpY * 5)
+        end
+    end
+
+    -- ==============================
+    -- KEY CHARACTER
+    -- ==============================
+
+    -- Key shaft (body) - riding on the board
+    local bodyBase_x = self.x + outX * 3
+    local bodyBase_y = self.y + outY * 3
+    local bodyTop_x = self.x + outX * 14
+    local bodyTop_y = self.y + outY * 14
     gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.0)
     gfx.setLineWidth(3)
-    gfx.drawLine(ssx, ssy, sex, sey)
+    gfx.drawLine(bodyBase_x, bodyBase_y, bodyTop_x, bodyTop_y)
 
-    -- Match head
-    local hx, hy = sex + outX*2, sey + outY*2
-    gfx.fillCircleAtPoint(hx, hy, 4)
+    -- Key teeth (notches on the shaft) - the "legs" straddling the board
+    for i = 0, 2 do
+        local toothPos = 0.2 + i * 0.25
+        local tx = bodyBase_x + (bodyTop_x - bodyBase_x) * toothPos
+        local ty = bodyBase_y + (bodyTop_y - bodyBase_y) * toothPos
+        local toothLen = 3 - i * 0.5
+        gfx.setLineWidth(2)
+        gfx.drawLine(tx, ty, tx - perpX * toothLen, ty - perpY * toothLen)
+    end
 
-    -- Flame
-    local fx, fy = hx + outX*4, hy + outY*4
-    local f1 = math.sin(self.flameFrame * 0.4) * 2
-    local f2 = math.cos(self.flameFrame * 0.3) * 1.5
-    local fSize = 7 + f1
+    -- === KEY HEAD (circular, rotates like a turning key) ===
+    local headX = bodyTop_x + outX * 5
+    local headY = bodyTop_y + outY * 5
+    local headR = 6
 
+    -- Head rotation animation (wobbles while moving, spins on jump)
+    local headSpin = 0
+    if self.isJumping then
+        headSpin = f * 0.25
+    else
+        headSpin = math.sin(f * 0.12) * 0.3
+    end
+
+    -- Outer ring of the key head
     gfx.setColor(gfx.kColorBlack)
-    gfx.fillCircleAtPoint(fx + perpX*f2, fy + perpY*f2, fSize)
-    gfx.fillCircleAtPoint(fx + outX*(5+f1), fy + outY*(5+f1), 4)
+    gfx.fillCircleAtPoint(headX, headY, headR)
     gfx.setColor(gfx.kColorWhite)
-    gfx.fillCircleAtPoint(fx + perpX*(f2*0.5), fy + perpY*(f2*0.5), fSize - 3)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.fillCircleAtPoint(fx, fy, 2)
+    gfx.fillCircleAtPoint(headX, headY, headR - 2)
 
-    if self.flameFrame % 4 == 0 then
+    -- Inner keyhole shape (rotates)
+    gfx.setColor(gfx.kColorBlack)
+    local khAngle = rad + headSpin
+    local khX = headX + math.cos(khAngle) * 1.5
+    local khY = headY + math.sin(khAngle) * 1.5
+    gfx.fillCircleAtPoint(khX, khY, 2)
+    -- Keyhole slot
+    gfx.setLineWidth(1)
+    gfx.drawLine(khX, khY, khX - math.cos(khAngle) * 3, khY - math.sin(khAngle) * 3)
+
+    -- === EYES (on the key head, looking in direction of travel) ===
+    local eyeSpacing = 2.5
+    local eye1x = headX + perpX * eyeSpacing + outX * 1.5
+    local eye1y = headY + perpY * eyeSpacing + outY * 1.5
+    local eye2x = headX - perpX * eyeSpacing + outX * 1.5
+    local eye2y = headY - perpY * eyeSpacing + outY * 1.5
+
+    -- Blink animation
+    local blinkCycle = f % 120
+    local isBlinking = blinkCycle > 115
+
+    gfx.setColor(gfx.kColorBlack)
+    if isBlinking then
+        -- Blink: horizontal lines
+        gfx.setLineWidth(1)
+        gfx.drawLine(eye1x - 1, eye1y, eye1x + 1, eye1y)
+        gfx.drawLine(eye2x - 1, eye2y, eye2x + 1, eye2y)
+    else
+        -- Open eyes with tiny pupils
+        gfx.fillCircleAtPoint(eye1x, eye1y, 1.5)
+        gfx.fillCircleAtPoint(eye2x, eye2y, 1.5)
+        gfx.setColor(gfx.kColorWhite)
+        -- Pupil highlights shift with movement
+        local pupilOff = math.sin(f * 0.1) * 0.5
+        gfx.fillCircleAtPoint(eye1x + outX * pupilOff, eye1y + outY * pupilOff, 0.5)
+        gfx.fillCircleAtPoint(eye2x + outX * pupilOff, eye2y + outY * pupilOff, 0.5)
+    end
+
+    -- === EXPRESSION: squint during jump, happy on landing ===
+    if self.isJumping and self.jumpVelocity > 2 then
+        -- Worried mouth (falling fast)
+        local mouthX = headX + outX * 0.5
+        local mouthY = headY + outY * 0.5
+        gfx.setColor(gfx.kColorBlack)
+        gfx.drawCircleAtPoint(mouthX, mouthY, 1.5)
+    end
+
+    -- === SPARKLE TRAIL from key head when moving ===
+    if f % 6 == 0 and (crankDelta > 1 or self.isJumping) then
+        self:createSparks(1)
+    end
+
+    -- Extra sparkle burst on jump
+    if f % 3 == 0 and self.isJumping then
         self:createSparks(1)
     end
 

@@ -603,10 +603,10 @@ local function drawToymakersLogo(cx, cy, size)
     gfx.setLineWidth(1)
     gfx.drawLine(cx + innerR, cy, cx + 1.72 * s, cy)
 
-    -- === REGISTERED TRADEMARK SYMBOL ===
+    -- === REGISTERED TRADEMARK SYMBOL (top-right of full logo) ===
     gfx.setColor(gfx.kColorBlack)
-    local tmX = cx + outerR * 0.75
-    local tmY = cy - outerR * 0.75
+    local tmX = cx + 1.72 * s + 6
+    local tmY = cy - 0.997 * s
     gfx.setLineWidth(1)
     gfx.drawCircleAtPoint(tmX, tmY, 5)
     gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
@@ -877,9 +877,11 @@ local function updateMenu()
     -- Input
     if playdate.buttonJustPressed(playdate.kButtonUp) or playdate.buttonJustPressed(playdate.kButtonDown) then
         menuSelection = menuSelection == 1 and 2 or 1
+        if soundManager then soundManager:playMenuHighlight() end
     end
 
     if playdate.buttonJustPressed(playdate.kButtonA) then
+        if soundManager then soundManager:playMenuSelect() end
         if menuSelection == 1 then
             if soundManager then soundManager:stopIntroMusic() end
             gameState = STATE_READY; readyTimer = 90; initGame()
@@ -965,6 +967,7 @@ local function updateHowToPlay()
     end
 
     if playdate.buttonJustPressed(playdate.kButtonB) or playdate.buttonJustPressed(playdate.kButtonA) then
+        if soundManager then soundManager:playMenuSelect() end
         gameState = STATE_MENU
     end
 end
@@ -1301,6 +1304,7 @@ local function updateScoreTally()
             gfx.drawTextAligned("Press A to continue", CENTER_X, 200, kTextAlignment.center)
         end
         if playdate.buttonJustPressed(playdate.kButtonA) then
+            if soundManager then soundManager:playMenuSelect() end
             gameState = STATE_GAMEOVER
             gameOverSelection = 1
         end
@@ -1392,9 +1396,11 @@ local function updateGameOver()
         -- Input
         if playdate.buttonJustPressed(playdate.kButtonUp) or playdate.buttonJustPressed(playdate.kButtonDown) then
             gameOverSelection = gameOverSelection == 1 and 2 or 1
+            if soundManager then soundManager:playMenuHighlight() end
         end
 
         if playdate.buttonJustPressed(playdate.kButtonA) then
+            if soundManager then soundManager:playMenuSelect() end
             if gameOverSelection == 1 then
                 -- Retry
                 gameState = STATE_READY; readyTimer = 60; gameOverTimer = 0; initGame()
